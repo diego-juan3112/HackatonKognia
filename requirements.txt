@@ -1,0 +1,19 @@
+# --- Core del agente ---
+langgraph>=0.6,<0.7
+langchain-core>=0.3,<0.4
+langchain-openai>=0.2,<0.3
+
+# --- API ---
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+
+# --- Config ---
+pydantic-settings>=2.4,<3.0
+python-dotenv>=1.0,<2.0
+
+# --- Herramientas opcionales del agente ---
+# Descomenta si vas a usar búsqueda web con Tavily:
+# langchain-tavily>=0.1
+
+# --- Testing ---
+pytest>=8.0
