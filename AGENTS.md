@@ -10,7 +10,7 @@ contradice algo aquí.
 | Orquestación de agente | LangGraph (grafo con estado, checkpointer) |
 | API | FastAPI |
 | LLM | *PENDIENTE* |
-| Voz | Azure Voice Live API (WebSocket, speech-to-speech) |
+| Voz | *PENDIENTE* |
 | Frontend | Astro (panel de chat/voz, visualización de estado del grafo) |
 | Infraestructura como código | Terraform |
 | Despliegue | Azure Container Apps |
@@ -40,6 +40,7 @@ una capa (ej. `api/` no llama directo a `integrations/`).
 - Documentación y docstrings en inglés (práctica de escritura técnica).
 - Nombres de archivo en `snake_case`, clases en `PascalCase`.
 - Cada nodo de LangGraph vive en su propio archivo bajo `services/graph/nodes/`.
+- Todo cambio a nivel de feature que se realice en el codigo y archivos modificados, deben quedar registrados con su fecha, version y funcionalidad en el CHANGELOG.md
 
 ## 4. Prohibido
 - Ninguna credencial, API key o secreto hardcodeado — siempre variables de
