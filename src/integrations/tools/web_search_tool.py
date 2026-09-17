@@ -7,7 +7,7 @@ el agente simplemente arranca sin esta tool (no revienta el arranque).
 Requiere: pip install langchain-tavily
 """
 
-from agent_core.config import Settings
+from config import Settings
 
 
 def get_web_search_tool(settings: Settings):

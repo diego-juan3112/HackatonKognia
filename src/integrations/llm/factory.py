@@ -1,21 +1,25 @@
-"""
-Adaptador de infraestructura: construye el LLM concreto según config.
+"""Infrastructure adapter: build the concrete chat model from settings.
 
-Este es el ÚNICO archivo que sabe si estamos hablando con Azure OpenAI
-o con OpenAI directo. El resto del agente (application/agent_graph.py)
-solo conoce el puerto `LLMPort` (ver domain/ports.py).
+This is the only file that knows whether we are talking to Azure OpenAI, to
+OpenAI directly, or to nothing at all. Everything above it sees only LLMPort.
 """
 
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from __future__ import annotations
 
-from agent_core.config import Settings
-from agent_core.domain.ports import LLMPort
+from config import Settings
+from integrations.llm.fake_llm import FakeChatModel
+from models.ports import LLMPort
 
 
 def build_llm(settings: Settings) -> LLMPort:
-    """Devuelve el chat model configurado (Azure u OpenAI)."""
+    """Return the chat model selected by ``MODEL_PROVIDER``."""
+
+    if settings.model_provider == "fake":
+        return FakeChatModel()
 
     if settings.model_provider == "azure":
+        from langchain_openai import AzureChatOpenAI
+
         if not settings.azure_openai_endpoint or not settings.azure_openai_api_key:
             raise RuntimeError(
                 "MODEL_PROVIDER=azure pero faltan AZURE_OPENAI_ENDPOINT "
@@ -30,6 +34,8 @@ def build_llm(settings: Settings) -> LLMPort:
         )
 
     if settings.model_provider == "openai":
+        from langchain_openai import ChatOpenAI
+
         if not settings.openai_api_key:
             raise RuntimeError(
                 "MODEL_PROVIDER=openai pero falta OPENAI_API_KEY en tu .env"

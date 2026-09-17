@@ -1,107 +1,107 @@
-# Agente General — Base para Kognia Challenge 2026
+# Kognia Voice Agent — base genérica adaptable
 
-Base de un agente de IA general construida sobre **LangGraph**, pensada
-para arrancar rápido el día del hackathon y solo tener que:
+Esqueleto de agente conversacional sobre **LangGraph**, diseñado para que el
+día del reto solo haya que conectar dos cosas:
 
-1. Conectar el modelo real (Azure OpenAI / Azure AI Foundry).
-2. Agregar las herramientas específicas del reto que les toque.
-3. Desplegarlo con el Terraform incluido.
+1. La lógica específica del negocio (un YAML de dominio y, si acaso, un nodo).
+2. Los proveedores de voz y avatar, cuando estén decididos.
 
-## Arquitectura (hexagonal / por capas)
+**No sabemos el reto todavía.** Puede ser PQR o atención financiera, por voz o
+por video. Por eso el núcleo modela capacidades genéricas y nada de un dominio
+concreto. Ver `AGENTS.md` §0 y §3.
 
-```
-src/
-├── agent_core/
-│   ├── domain/            # Puertos (contratos). Sin dependencias externas.
-│   │   └── ports.py       # LLMPort, ToolPort
-│   ├── application/       # Casos de uso: arma el grafo del agente.
-│   │   └── agent_graph.py # create_react_agent (LangGraph) + memoria
-│   ├── infrastructure/    # Adaptadores concretos.
-│   │   ├── llm_factory.py # OpenAI <-> Azure OpenAI (según .env)
-│   │   └── tools/         # calculator (offline), web_search (Tavily)
-│   └── config.py          # Settings vía variables de entorno
-└── api/
-    └── main.py            # FastAPI: única capa que sabe que existe HTTP
-tests/
-└── test_agent_smoke.py    # Corre el grafo con un LLM falso (sin API keys)
-infra/terraform/           # Azure OpenAI + Container Apps
-```
-
-La idea de separar en capas: la lógica del agente (`application`) no
-sabe si el modelo es de Azure o de OpenAI, ni si se expone por FastAPI,
-un CLI o un worker. Eso vive en `infrastructure` y `api`. Así, cambiar
-de proveedor de modelo el día del reto es **cambiar variables de
-entorno**, no reescribir código.
-
-## Cómo correrlo hoy (sin Azure todavía)
+## Arranque rápido (sin credenciales, sin red)
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+.venv/Scripts/activate            # Windows;  source .venv/bin/activate en Linux/Mac
 pip install -r requirements.txt
 
-cp .env.example .env
-# Edita .env: MODEL_PROVIDER=openai y OPENAI_API_KEY=sk-...
-
-PYTHONPATH=src pytest -q                 # valida el agente sin gastar API
-uvicorn api.main:app --reload --app-dir src --port 8000
+pytest                             # 22 tests, todos offline
+python -m scripts.ingest --path docs/faq_demo --reset
+uvicorn api.main:app --app-dir src --port 8000
 ```
 
-Probar el endpoint:
+`MODEL_PROVIDER` viene en `fake` por defecto: el grafo completo corre con un
+modelo determinista, sin gastar un token. Para usar un modelo real, copia
+`.env.example` a `.env` y cambia el proveedor.
 
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "cuanto es 23 * 4 + 10", "thread_id": "demo"}'
+  -d '{"message": "cual es el horario de atencion", "thread_id": "demo"}'
 ```
 
-## Cómo pasar a Azure el día del hackathon
+## Arquitectura
 
-Solo cambian las variables de entorno (ver `.env.example`):
-
-```bash
-MODEL_PROVIDER=azure
-AZURE_OPENAI_ENDPOINT=https://<tu-recurso>.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini      # o el deployment que hayan creado
-AZURE_OPENAI_API_KEY=...
-AZURE_OPENAI_API_VERSION=2024-10-21
+```
+src/
+├── models/          # Transversal: estructuras de datos + contratos de puerto
+│   ├── ports.py     #   LLMPort, VoicePort, AvatarPort, RetrievalPort
+│   ├── conversation.py
+│   ├── retrieval.py
+│   └── domain_config.py
+├── services/        # El cerebro. No sabe de HTTP ni de SDKs.
+│   ├── graph/
+│   │   ├── builder.py    # arma y compila el StateGraph
+│   │   ├── state.py
+│   │   ├── edges.py      # transiciones: funciones puras de estado
+│   │   └── nodes/        # un archivo por capacidad genérica
+│   └── domain_loader.py
+├── integrations/    # Todo lo que toca el mundo exterior
+│   ├── llm/         #   openai | azure | fake
+│   ├── retrieval/   #   Chroma + cargadores + embeddings
+│   ├── voice/       #   VACÍO a propósito (§8)
+│   └── avatar/      #   VACÍO a propósito (§8)
+└── api/             # FastAPI. Única capa que sabe que existe HTTP.
+config/domains/      # Dominios declarativos (YAML)
+docs/faq_demo/       # Corpus de juguete para el RAG
+scripts/ingest.py    # Reindexado
 ```
 
-No se toca ni una línea de `agent_graph.py` ni de `api/main.py`.
+Regla de dependencia: `api/` → `services/` → `integrations/`. `models/` es
+transversal. Ver `AGENTS.md` §2.
 
-## Agregar una herramienta nueva
+## El grafo
 
-1. Crear el archivo en `src/agent_core/infrastructure/tools/mi_tool.py` con
-   una función decorada `@tool` (ver `calculator_tool.py` como ejemplo).
-2. Agregarla a la lista en `infrastructure/tools/__init__.py`
-   (`default_toolset`).
-
-El agente la detecta y decide solo cuándo usarla (así funciona ReAct).
-
-## Despliegue en Azure (Terraform)
-
-Ver `infra/terraform/README.md`. En resumen:
-
-```bash
-cd infra/terraform
-terraform init
-terraform apply
+```
+intake → classify_intent → collect_data → route ─┬→ retrieve_context → respond → END
+                                                 └→ respond → END
 ```
 
-Esto crea: Azure OpenAI (con un deployment de modelo), Container Apps
-Environment + Container App, Log Analytics y Container Registry.
+Las cinco capacidades son genéricas: recepción, clasificación de intención,
+recolección de datos, enrutamiento y respuesta. **Ningún nodo menciona PQR ni
+finanzas.**
 
-## Si necesitan algo más complejo que un solo agente ReAct
+La regla que sostiene el diseño (`AGENTS.md` §8): **el LLM nunca decide una
+transición.** Rellena `intent` y redacta texto; la arista condicional en
+`edges.py` es una función pura que lee `state["route"]`. Por eso el grafo está
+construido a mano en vez de con `create_react_agent`, donde el modelo controla
+el bucle vía tool-calls.
 
-- **Varios sub-agentes especializados coordinados por uno principal:**
-  librería [`langgraph-supervisor`](https://github.com/langchain-ai/langgraph-supervisor-py).
-- **Varios agentes que se pasan el control entre sí (peer-to-peer):**
-  librería [`langgraph-swarm`](https://github.com/langchain-ai/langgraph-swarm-py).
-- **Flujo totalmente custom (pasos fijos, ramas propias):** construir un
-  `StateGraph` a mano en vez de `create_react_agent` (ver la guía .md
-  adjunta para la sintaxis básica de nodos/edges).
+## Adaptar al reto real
 
-## Referencia
+1. **Dominio:** escribir `config/domains/<reto>.yaml` con el catálogo de
+   intenciones y el esquema de campos. Apuntar `DOMAIN_CONFIG_PATH` ahí.
+2. **Conocimiento:** `python -m scripts.ingest --path <carpeta que nos den> --reset`.
+   Soporta `.md`, `.txt`, `.csv`, `.pdf`.
+3. **Modelo:** `MODEL_PROVIDER=azure` (o `openai`) más sus variables.
+4. **Voz/avatar:** implementar el adaptador en `integrations/voice/` o
+   `integrations/avatar/` — y **solo** ahí. Ver el README de cada carpeta.
 
-Ver `GUIA-LANGGRAPH-HACKATHON.md` para la explicación conceptual de
-LangGraph, la comparación de modelos disponibles en Azure y el plan de
-trabajo sugerido para hoy y para el día del reto.
+Borrar `config/domains/faq_demo.yaml` y `docs/faq_demo/` cuando el dominio real
+esté listo: son desechables por diseño (`AGENTS.md` §4).
+
+## Limitaciones conocidas
+
+- Con `EMBEDDING_PROVIDER=fake` la recuperación es léxica (bolsa de palabras con
+  hashing), no semántica. Sirve para validar el cableado; para calidad real usar
+  `EMBEDDING_PROVIDER=openai`.
+- `MODEL_PROVIDER=fake` no razona: clasifica por solapamiento de palabras y, al
+  responder, cita el contexto recuperado. Es una herramienta de diagnóstico.
+- El checkpointer es `MemorySaver`: la memoria se pierde al reiniciar.
+
+## Despliegue
+
+Ver `infra/terraform/README.md`. `terraform apply` es siempre manual
+(`AGENTS.md` §12).

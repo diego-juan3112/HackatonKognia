@@ -1,0 +1,65 @@
+# =========================================================================
+# DOMINIO DE JUGUETE — DESECHABLE
+#
+# Existe solo para validar que el pipeline corre de punta a punta
+# (AGENTS.md §4). NO es el producto y NO se le agregan features.
+# El día del reto: se escribe un YAML nuevo y este se borra.
+#
+# Nada de este archivo está hardcodeado en el código. Los nodos genéricos
+# leen este catálogo; no saben qué hay dentro.
+# =========================================================================
+
+name: faq_demo
+description: FAQ trivial para probar el esqueleto.
+
+system_prompt: >
+  Eres un asistente de atencion al cliente. Responde en espanol, de forma
+  breve y concreta, usando unicamente el contexto que se te entrega.
+
+fallback_intent: desconocido
+
+escalation_message: >
+  Esto necesita revision de una persona del equipo. Te paso con un asesor.
+
+# 0 = desactivado. Sube esto para probar el escalamiento por longitud.
+max_turns_before_escalation: 0
+
+intents:
+  - name: horario
+    description: Preguntas sobre horarios y dias de atencion.
+    examples:
+      - cual es el horario de atencion
+      - a que hora abren
+    required_fields: []
+
+  - name: canales
+    description: Preguntas sobre canales de contacto, telefono, correo o sede.
+    examples:
+      - como los contacto
+      - tienen linea telefonica
+    required_fields: []
+
+  # Esta intencion existe para ejercitar la rama de recoleccion de datos:
+  # el grafo debe preguntar por el radicado en vez de responder.
+  - name: estado_solicitud
+    description: Consultar el estado de una solicitud ya radicada.
+    examples:
+      - quiero saber como va mi solicitud
+      - en que va mi tramite
+    required_fields:
+      - name: numero_radicado
+        prompt: Para consultarlo necesito tu numero de radicado. Cual es?
+        required: true
+
+  # Esta existe para ejercitar la rama de escalamiento.
+  - name: reclamo_grave
+    description: Quejas graves, riesgo legal o solicitudes de indemnizacion.
+    examples:
+      - voy a poner una demanda
+      - esto es un fraude
+    escalate: true
+    required_fields: []
+
+  - name: desconocido
+    description: No encaja en ninguna otra categoria.
+    required_fields: []

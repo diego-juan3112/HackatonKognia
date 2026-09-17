@@ -2,6 +2,7 @@
 langgraph>=0.6,<0.7
 langchain-core>=0.3,<0.4
 langchain-openai>=0.2,<0.3
+langchain-text-splitters>=0.3,<0.4
 
 # --- API ---
 fastapi>=0.115,<1.0
@@ -10,10 +11,19 @@ uvicorn[standard]>=0.30,<1.0
 # --- Config ---
 pydantic-settings>=2.4,<3.0
 python-dotenv>=1.0,<2.0
+pyyaml>=6.0,<7.0
+
+# --- RAG / base de conocimiento ---
+# Chroma sobre FAISS: trae persistencia, upsert y filtrado por metadatos de
+# fabrica. Ver el plan y AGENTS.md 6.
+chromadb>=0.5,<2.0
+pypdf>=5.0,<6.0
 
 # --- Herramientas opcionales del agente ---
-# Descomenta si vas a usar búsqueda web con Tavily:
+# Descomenta si vas a usar busqueda web con Tavily:
 # langchain-tavily>=0.1
 
 # --- Testing ---
 pytest>=8.0
+pytest-asyncio>=0.24
+httpx>=0.27
