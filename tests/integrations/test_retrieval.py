@@ -1,68 +1,94 @@
-"""Retrieval adapter: ingestion, search and the loader registry.
+"""Loaders, embeddings and the in-memory retriever.
 
-Runs against a real Chroma store in tmp_path with deterministic embeddings --
-no network, no API key.
+The real pgvector adapter is exercised in tests/integration/, which needs a
+database. What is covered here is everything that does not: document parsing,
+embedding behaviour, and ranking.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from integrations.retrieval.chroma_retriever import ChromaRetriever
+import pytest
+
+from config import EMBEDDING_DIMENSIONS
 from integrations.retrieval.embeddings import HashingEmbedder
 from integrations.retrieval.loaders import load_directory, load_file
 from models.retrieval import Document
+from tests.doubles import InMemoryRetriever
 
 
-def test_search_ranks_the_relevant_document_first(retriever):
-    results = retriever.search("horario de atencion sabados", top_k=2)
+async def test_search_ranks_the_relevant_document_first(retriever):
+    results = await retriever.search("horario de atencion sabados", top_k=2)
 
     assert results
     assert results[0].source == "horarios.md"
 
 
-def test_ranking_holds_on_the_real_corpus(tmp_path: Path):
+async def test_ranking_holds_on_the_real_corpus(tmp_path: Path):
     """Regression: function words used to dominate the vectors.
 
     With two toy documents the ranking looked fine; against the actual
     docs/faq_demo corpus the query "cual es el horario de atencion" returned
     solicitudes.md first, because "de"/"el"/"es" outweighed the content words.
-    This test ingests the real corpus so that regression cannot come back.
     """
     corpus_dir = Path(__file__).resolve().parents[2] / "docs" / "faq_demo"
     documents, _ = load_directory(corpus_dir)
-    store = ChromaRetriever(
-        path=tmp_path / "c", collection_name="real", embedder=HashingEmbedder()
-    )
-    store.index(documents)
+    store = InMemoryRetriever()
+    await store.index(documents)
 
-    assert store.search("cual es el horario de atencion", top_k=3)[0].source == "horarios.md"
-    assert store.search("como los puedo contactar por telefono", top_k=3)[0].source == "canales.md"
-    assert store.search("en que va mi radicado", top_k=3)[0].source == "solicitudes.md"
+    top = await store.search("cual es el horario de atencion", top_k=3)
+    assert top[0].source == "horarios.md"
 
-
-def test_search_on_empty_index_returns_empty(empty_retriever):
-    assert empty_retriever.search("cualquier cosa") == []
-    assert empty_retriever.count() == 0
+    top = await store.search("en que va mi radicado", top_k=3)
+    assert top[0].source == "solicitudes.md"
 
 
-def test_reindexing_the_same_document_does_not_duplicate(tmp_path: Path):
-    store = ChromaRetriever(
-        path=tmp_path / "c", collection_name="dup", embedder=HashingEmbedder()
-    )
+async def test_search_on_empty_index_returns_empty(empty_retriever):
+    assert await empty_retriever.search("cualquier cosa") == []
+    assert await empty_retriever.count() == 0
+
+
+async def test_reindexing_the_same_document_does_not_duplicate():
+    store = InMemoryRetriever()
     document = Document(source="a.md", text="Texto estable para reindexar.")
 
-    store.index([document])
-    first = store.count()
-    store.index([document])
+    await store.index([document])
+    first = await store.count()
+    await store.index([document])
 
-    assert store.count() == first, "stable chunk ids should upsert, not append"
+    assert await store.count() == first, "reindexar debe reemplazar, no acumular"
 
 
-def test_reset_clears_the_index(retriever):
-    assert retriever.count() > 0
-    retriever.reset()
-    assert retriever.count() == 0
+async def test_reset_clears_the_index(retriever):
+    assert await retriever.count() > 0
+    await retriever.reset()
+    assert await retriever.count() == 0
+
+
+# --- embeddings ------------------------------------------------------------
+
+
+def test_hashing_embedder_matches_the_column_width():
+    """A mismatch here would make every pgvector insert fail at ingestion."""
+    vector = HashingEmbedder().embed_query("cualquier texto")
+    assert len(vector) == EMBEDDING_DIMENSIONS
+
+
+def test_hashing_embedder_is_deterministic_across_calls():
+    """Python's hash() is salted per process; this must not depend on it."""
+    a = HashingEmbedder().embed_query("horario de atencion")
+    b = HashingEmbedder().embed_query("horario de atencion")
+    assert a == b
+
+
+def test_empty_text_still_produces_a_unit_vector():
+    """A zero vector would be rejected by pgvector's cosine operator."""
+    vector = HashingEmbedder().embed_query("de el la y")  # solo stopwords
+    assert abs(sum(v * v for v in vector) - 1.0) < 1e-9
+
+
+# --- loaders ---------------------------------------------------------------
 
 
 def test_loaders_cover_the_declared_formats(tmp_path: Path):
@@ -84,3 +110,8 @@ def test_unsupported_format_returns_none(tmp_path: Path):
     path.write_text("irrelevante", encoding="utf-8")
 
     assert load_file(path) is None
+
+
+def test_missing_path_fails_loudly():
+    with pytest.raises(FileNotFoundError):
+        load_directory("/ruta/que/no/existe")

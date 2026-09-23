@@ -4,10 +4,11 @@ Kept as an internal detail of the retrieval adapter rather than promoted to a
 port: AGENTS.md section 5 lists four ports and adding a fifth for something
 nobody above ``integrations/`` ever sees would be noise.
 
-The fake embedder is not a stub that returns zeros. It is a hashing bag-of-
-words vectoriser, so documents that share vocabulary really do land near each
-other. That gives usable lexical retrieval with no network and no API key,
-which is what lets the full pipeline run offline.
+The interface is deliberately asymmetric (``embed_documents`` vs
+``embed_query``). Modern retrieval models encode a question and a passage
+differently, and E5 in particular requires literal ``query:`` / ``passage:``
+prefixes -- forgetting them costs a noticeable chunk of retrieval quality. That
+detail is handled inside the adapter so no caller has to remember it.
 """
 
 from __future__ import annotations
@@ -18,8 +19,9 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
+from config import EMBEDDING_DIMENSIONS
+
 _TOKEN = re.compile(r"\w+", re.UNICODE)
-FAKE_DIMENSIONS = 256
 
 # Without this, function words dominate every vector and retrieval ranks by
 # "which document says 'de' most often". Measured effect: the query "cual es el
@@ -40,7 +42,9 @@ _STOPWORDS = frozenset(
 class Embedder(Protocol):
     """Turn texts into vectors."""
 
-    def embed(self, texts: Sequence[str]) -> list[list[float]]: ...
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]: ...
+
+    def embed_query(self, text: str) -> list[float]: ...
 
 
 def _tokenize(text: str) -> list[str]:
@@ -54,12 +58,14 @@ def _tokenize(text: str) -> list[str]:
 class HashingEmbedder:
     """Deterministic, offline, dependency-free.
 
-    Uses the hashing trick: every token is mapped to a dimension by a stable
-    hash, counts are accumulated and the vector is L2-normalised so cosine
-    similarity behaves.
+    Uses the hashing trick: every token maps to a dimension by a stable hash,
+    counts accumulate, and the vector is L2-normalised so cosine behaves.
+
+    Not semantic -- it only knows which words two texts share. Its job is to
+    let the pipeline run in tests and offline, not to retrieve well.
     """
 
-    def __init__(self, dimensions: int = FAKE_DIMENSIONS) -> None:
+    def __init__(self, dimensions: int = EMBEDDING_DIMENSIONS) -> None:
         self.dimensions = dimensions
 
     def _vector(self, text: str) -> list[float]:
@@ -80,36 +86,64 @@ class HashingEmbedder:
 
         norm = math.sqrt(sum(v * v for v in vector))
         if norm < 1e-12:
-            # An empty or all-stopword text: return a valid unit vector so
-            # Chroma never receives a zero vector.
+            # An empty or all-stopword text: return a valid unit vector so the
+            # database never receives a zero vector.
             vector[0] = 1.0
             return vector
         return [v / norm for v in vector]
 
-    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+    # Symmetric: there is no query/passage distinction to make here.
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         return [self._vector(t) for t in texts]
 
+    def embed_query(self, text: str) -> list[float]:
+        return self._vector(text)
 
-class OpenAIEmbedder:
-    """Real embeddings. Requires a key and network; never used by the suite."""
 
-    def __init__(self, api_key: str, model: str = "text-embedding-3-small") -> None:
-        if not api_key:
+class E5Embedder:
+    """intfloat/multilingual-e5-base, running locally on CPU.
+
+    Chosen over the English-only models (all-MiniLM, bge-base-en, msmarco...)
+    because our corpus and our users are in Spanish; an English-only model
+    fails silently, returning results that are simply wrong.
+
+    Downloads ~1.1 GB from Hugging Face the first time and caches it. That
+    first run needs network; every run after works offline.
+    """
+
+    def __init__(self, model_name: str = "intfloat/multilingual-e5-base") -> None:
+        from sentence_transformers import SentenceTransformer
+
+        self._model = SentenceTransformer(model_name)
+        actual = self._model.get_sentence_embedding_dimension()
+        if actual != EMBEDDING_DIMENSIONS:
+            # Fail loudly here rather than letting Postgres reject every insert
+            # with an opaque dimension error at ingestion time.
             raise RuntimeError(
-                "EMBEDDING_PROVIDER=openai pero falta OPENAI_API_KEY en tu .env"
+                f"El modelo {model_name} produce vectores de {actual} dimensiones, "
+                f"pero la columna document_chunks.embedding es vector({EMBEDDING_DIMENSIONS}). "
+                f"Cambiar de modelo exige una migracion nueva y reindexar."
             )
-        from langchain_openai import OpenAIEmbeddings
 
-        self._client = OpenAIEmbeddings(model=model, api_key=api_key)
+    def _encode(self, texts: Sequence[str]) -> list[list[float]]:
+        vectors = self._model.encode(
+            list(texts),
+            normalize_embeddings=True,  # cosine distance expects unit vectors
+            show_progress_bar=False,
+        )
+        return [v.tolist() for v in vectors]
 
-    def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        return self._client.embed_documents(list(texts))
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        return self._encode([f"passage: {t}" for t in texts])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._encode([f"query: {text}"])[0]
 
 
-def build_embedder(provider: str, api_key: str = "", model: str = "") -> Embedder:
+def build_embedder(provider: str, model: str = "") -> Embedder:
     """Select the embedder declared in settings."""
     if provider == "fake":
         return HashingEmbedder()
-    if provider == "openai":
-        return OpenAIEmbedder(api_key=api_key, model=model or "text-embedding-3-small")
+    if provider == "local":
+        return E5Embedder(model or "intfloat/multilingual-e5-base")
     raise ValueError(f"EMBEDDING_PROVIDER desconocido: {provider!r}")

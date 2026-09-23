@@ -9,6 +9,7 @@ above ``integrations/`` changes.
 from __future__ import annotations
 
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +72,7 @@ class TurnResult(BaseModel):
 
     reply: str
     thread_id: str
+    conversation_id: UUID | None = None
     intent: str | None = None
     route: RouteDecision = RouteDecision.ANSWER
     missing_fields: list[str] = Field(default_factory=list)

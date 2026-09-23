@@ -98,3 +98,14 @@ class FakeChatModel(BaseChatModel):
     ) -> ChatResult:
         message = AIMessage(content=self._answer(messages))
         return ChatResult(generations=[ChatGeneration(message=message)])
+
+    async def _agenerate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        # The graph nodes await the model. Without this, LangChain would fall
+        # back to running _generate in a thread pool for every call -- harmless
+        # but pointless overhead for a model that does no I/O.
+        return self._generate(messages, stop, **kwargs)

@@ -8,7 +8,7 @@ those are names in the domain YAML.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -32,9 +32,9 @@ def _conversation_text(state: ConversationState) -> str:
     return "\n".join(parts)
 
 
-def _extract(llm: LLMPort, field_names: list[str], conversation: str) -> dict:
+async def _extract(llm: LLMPort, field_names: list[str], conversation: str) -> dict:
     system = _PROMPT.format(fields=", ".join(field_names))
-    response = llm.invoke(
+    response = await llm.ainvoke(
         [SystemMessage(content=system), HumanMessage(content=conversation)]
     )
     try:
@@ -48,10 +48,12 @@ def _extract(llm: LLMPort, field_names: list[str], conversation: str) -> dict:
     return {k: v for k, v in parsed.items() if k in field_names and v not in (None, "")}
 
 
-def make_collect_data(llm: LLMPort, domain: DomainSpec) -> Callable[[ConversationState], dict]:
+def make_collect_data(
+    llm: LLMPort, domain: DomainSpec
+) -> Callable[[ConversationState], Awaitable[dict]]:
     """Build the slot-filling node."""
 
-    def collect_data(state: ConversationState) -> dict:
+    async def collect_data(state: ConversationState) -> dict:
         intent = domain.intent(state.get("intent"))
         if intent is None or not intent.required_fields:
             return {"missing_fields": []}
@@ -61,7 +63,7 @@ def make_collect_data(llm: LLMPort, domain: DomainSpec) -> Callable[[Conversatio
         pending = [f.name for f in required if f.name not in collected]
 
         if pending:
-            collected.update(_extract(llm, pending, _conversation_text(state)))
+            collected.update(await _extract(llm, pending, _conversation_text(state)))
 
         missing = [f.name for f in required if f.name not in collected]
         return {"collected": collected, "missing_fields": missing}

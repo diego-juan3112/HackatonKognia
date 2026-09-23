@@ -11,7 +11,7 @@ a pure edge function.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -35,7 +35,9 @@ def _last_user_text(state: ConversationState) -> str:
     return ""
 
 
-def make_classify_intent(llm: LLMPort, domain: DomainSpec) -> Callable[[ConversationState], dict]:
+def make_classify_intent(
+    llm: LLMPort, domain: DomainSpec
+) -> Callable[[ConversationState], Awaitable[dict]]:
     """Build the classifier node bound to a model and a domain."""
 
     # Examples are part of the catalogue entry, not decoration: they are the
@@ -49,12 +51,14 @@ def make_classify_intent(llm: LLMPort, domain: DomainSpec) -> Callable[[Conversa
 
     system = _PROMPT.format(catalogue="\n".join(lines), fallback=domain.fallback_intent)
 
-    def classify_intent(state: ConversationState) -> dict:
+    async def classify_intent(state: ConversationState) -> dict:
         text = _last_user_text(state)
         if not text:
             return {"intent": domain.fallback_intent}
 
-        response = llm.invoke([SystemMessage(content=system), HumanMessage(content=text)])
+        response = await llm.ainvoke(
+            [SystemMessage(content=system), HumanMessage(content=text)]
+        )
         raw = str(response.content).strip().lower()
 
         # Never trust the model to return a name verbatim: match it against the

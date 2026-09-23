@@ -15,10 +15,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable
+from uuid import UUID
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
+from models.auth import Conversation, MessageRecord, Session, User
 from models.conversation import AudioChunk, SpeechChunk, Utterance, VisemeFrame
 from models.retrieval import Document, RetrievedChunk
 
@@ -38,13 +40,18 @@ ToolPort = BaseTool
 
 @runtime_checkable
 class RetrievalPort(Protocol):
-    """Ingest documents and answer "what context is relevant to this turn?"."""
+    """Ingest documents and answer "what context is relevant to this turn?".
 
-    def index(self, documents: Sequence[Document]) -> int:
+    Asynchronous because the backing store is PostgreSQL behind an async pool,
+    and a blocking call here would stall FastAPI's event loop for every other
+    request in flight.
+    """
+
+    async def index(self, documents: Sequence[Document]) -> int:
         """Add or replace documents. Returns the number of chunks written."""
         ...
 
-    def search(
+    async def search(
         self,
         query: str,
         top_k: int = 4,
@@ -53,13 +60,65 @@ class RetrievalPort(Protocol):
         """Return the most relevant chunks, best first."""
         ...
 
-    def count(self) -> int:
+    async def count(self) -> int:
         """Number of chunks currently indexed. Used by /health."""
         ...
 
-    def reset(self) -> None:
+    async def reset(self) -> None:
         """Drop everything indexed. Used by tests and by re-ingestion."""
         ...
+
+
+# ---------------------------------------------------------------------------
+# Persistence -- PostgreSQL is decided, but ``services/`` still must not import
+# psycopg. These ports keep SQL inside ``integrations/db/`` so the business
+# logic can be tested against in-memory doubles with no database running.
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class UserRepositoryPort(Protocol):
+    """Identity storage."""
+
+    async def find_by_cedula(self, cedula: str) -> User | None: ...
+
+    async def find_by_id(self, user_id: UUID) -> User | None: ...
+
+    async def create(self, cedula: str, display_name: str | None = None) -> User:
+        """Register a new person. Raises if the cedula already exists."""
+        ...
+
+    async def touch_last_seen(self, user_id: UUID) -> None: ...
+
+    async def create_session(self, user_id: UUID, ttl_hours: int) -> Session: ...
+
+    async def get_session(self, session_id: UUID) -> Session | None:
+        """Return the session regardless of expiry; the caller decides validity."""
+        ...
+
+
+@runtime_checkable
+class ConversationRepositoryPort(Protocol):
+    """Chat threads and their readable history."""
+
+    async def create(self, user_id: UUID, domain: str, title: str | None = None) -> Conversation:
+        ...
+
+    async def get(self, conversation_id: UUID) -> Conversation | None: ...
+
+    async def list_for_user(self, user_id: UUID, limit: int = 50) -> list[Conversation]: ...
+
+    async def append_message(
+        self,
+        conversation_id: UUID,
+        role: str,
+        content: str,
+        intent: str | None = None,
+        route: str | None = None,
+        sources: Sequence[str] = (),
+    ) -> MessageRecord: ...
+
+    async def history(self, conversation_id: UUID, limit: int = 100) -> list[MessageRecord]: ...
 
 
 # ---------------------------------------------------------------------------
