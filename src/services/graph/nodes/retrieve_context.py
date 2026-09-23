@@ -7,7 +7,7 @@ an embedding.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from langchain_core.messages import HumanMessage
 
@@ -18,10 +18,10 @@ from services.graph.state import ConversationState
 def make_retrieve_context(
     retriever: RetrievalPort,
     top_k: int = 4,
-) -> Callable[[ConversationState], dict]:
+) -> Callable[[ConversationState], Awaitable[dict]]:
     """Build the retrieval node."""
 
-    def retrieve_context(state: ConversationState) -> dict:
+    async def retrieve_context(state: ConversationState) -> dict:
         query = ""
         for message in reversed(state.get("messages", [])):
             if isinstance(message, HumanMessage):
@@ -31,6 +31,6 @@ def make_retrieve_context(
         if not query:
             return {"retrieved": []}
 
-        return {"retrieved": retriever.search(query, top_k=top_k)}
+        return {"retrieved": await retriever.search(query, top_k=top_k)}
 
     return retrieve_context

@@ -1,7 +1,11 @@
 """Infrastructure adapter: build the concrete chat model from settings.
 
-This is the only file that knows whether we are talking to Azure OpenAI, to
-OpenAI directly, or to nothing at all. Everything above it sees only LLMPort.
+This is the only file that knows which vendor is answering. Everything above it
+sees only ``LLMPort``.
+
+Imports are inside each branch on purpose: selecting "fake" must not require
+the NVIDIA or OpenAI packages to be importable, which is what keeps the test
+suite runnable with a minimal environment.
 """
 
 from __future__ import annotations
@@ -16,6 +20,39 @@ def build_llm(settings: Settings) -> LLMPort:
 
     if settings.model_provider == "fake":
         return FakeChatModel()
+
+    if settings.model_provider == "nvidia":
+        # ChatOpenAI, not ChatNVIDIA, and that is deliberate.
+        #
+        # NVIDIA NIM speaks the OpenAI protocol, so pointing ChatOpenAI at its
+        # base_url works. We need that because `reasoning_effort` has to reach
+        # the API: langchain-nvidia-ai-endpoints silently drops it (verified by
+        # token count -- 100 output tokens with it, same as without), and that
+        # parameter is the difference between ~19s and ~3s per call.
+        #
+        # It also removes a dependency that was pinned to an old line because
+        # its current release demands langchain-core 1.x.
+        #
+        # No OpenAI account is involved: the key is the NVIDIA one and the
+        # traffic goes to integrate.api.nvidia.com.
+        from langchain_openai import ChatOpenAI
+
+        if not settings.nvidia_api_key:
+            raise RuntimeError(
+                "MODEL_PROVIDER=nvidia pero falta NVIDIA_API_KEY en tu .env. "
+                "Consiguela gratis en https://build.nvidia.com"
+            )
+        return ChatOpenAI(
+            model=settings.nvidia_model,
+            api_key=settings.nvidia_api_key,
+            base_url=settings.nvidia_base_url,
+            temperature=0,
+            extra_body={"reasoning_effort": settings.nvidia_reasoning_effort},
+        )
+
+    # --- Respaldo de pago -------------------------------------------------
+    # Se conservan por si el tier gratuito de NVIDIA se agota a mitad de la
+    # demo: cambiar de proveedor es una variable de entorno. Ver AGENTS.md 1.3.
 
     if settings.model_provider == "azure":
         from langchain_openai import AzureChatOpenAI

@@ -10,17 +10,17 @@ Precedence is explicit and ordered; the first rule that matches wins.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from models.conversation import RouteDecision
 from models.domain_config import DomainSpec
 from services.graph.state import ConversationState
 
 
-def make_route(domain: DomainSpec) -> Callable[[ConversationState], dict]:
+def make_route(domain: DomainSpec) -> Callable[[ConversationState], Awaitable[dict]]:
     """Build the routing node bound to a domain's rules."""
 
-    def route(state: ConversationState) -> dict:
+    async def route(state: ConversationState) -> dict:
         intent = domain.intent(state.get("intent"))
 
         # 1. The domain marks this intent as always-escalate.

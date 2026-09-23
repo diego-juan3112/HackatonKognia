@@ -7,7 +7,7 @@ demo cheap and the tests exact.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
@@ -36,10 +36,12 @@ def _field_prompt(domain: DomainSpec, state: ConversationState) -> str:
     return f"Necesito este dato para continuar: {missing[0]}"
 
 
-def make_respond(llm: LLMPort, domain: DomainSpec) -> Callable[[ConversationState], dict]:
+def make_respond(
+    llm: LLMPort, domain: DomainSpec
+) -> Callable[[ConversationState], Awaitable[dict]]:
     """Build the response node."""
 
-    def respond(state: ConversationState) -> dict:
+    async def respond(state: ConversationState) -> dict:
         route = state.get("route")
 
         if route == RouteDecision.ESCALATE:
@@ -58,7 +60,7 @@ def make_respond(llm: LLMPort, domain: DomainSpec) -> Callable[[ConversationStat
         prompt.append(SystemMessage(content=_CONTEXT_BLOCK.format(context=context)))
         prompt.extend(m for m in state.get("messages", []) if isinstance(m, HumanMessage))
 
-        response = llm.invoke(prompt)
+        response = await llm.ainvoke(prompt)
         return {"messages": [AIMessage(content=str(response.content))]}
 
     return respond

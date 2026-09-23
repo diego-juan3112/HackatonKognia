@@ -23,7 +23,14 @@ where = ["src"]
 # llega a importar. Era la causa de que nunca hubiera corrido.
 pythonpath = ["src", "."]
 testpaths = ["tests"]
-addopts = "-q"
+# `-m "not integration"` por defecto: la suite tiene que correr sin Docker ni
+# credenciales (AGENTS.md 11). Los tests contra Postgres se piden explicitamente
+# con `pytest -m integration`.
+addopts = "-q -m 'not integration'"
+asyncio_mode = "auto"
+markers = [
+    "integration: requiere un PostgreSQL con pgvector accesible en DATABASE_URL",
+]
 
 [tool.ruff]
 line-length = 100

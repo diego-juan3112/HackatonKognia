@@ -1,22 +1,37 @@
 # --- Core del agente ---
 langgraph>=0.6,<0.7
 langchain-core>=0.3,<0.4
-langchain-openai>=0.2,<0.3
 langchain-text-splitters>=0.3,<0.4
+
+# --- LLM ---
+# Un solo cliente para los tres proveedores. NVIDIA NIM habla el protocolo de
+# OpenAI, asi que ChatOpenAI apuntando a su base_url sirve para NVIDIA (el
+# proveedor por defecto, gratuito), para OpenAI directo y, via AzureChatOpenAI,
+# para Azure.
+#
+# Se quito langchain-nvidia-ai-endpoints: descartaba el parametro
+# reasoning_effort, que vale un 6x de latencia. Ver integrations/llm/factory.py.
+langchain-openai>=0.2,<0.3
 
 # --- API ---
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.30,<1.0
+
+# --- Base de datos ---
+psycopg[binary,pool]>=3.2,<4.0
+pgvector>=0.3,<1.0
+langgraph-checkpoint-postgres>=2.0,<4.0
+
+# --- Embeddings locales ---
+# Descarga intfloat/multilingual-e5-base (~1.1 GB) la primera vez y lo cachea.
+sentence-transformers>=3.0,<7.0
 
 # --- Config ---
 pydantic-settings>=2.4,<3.0
 python-dotenv>=1.0,<2.0
 pyyaml>=6.0,<7.0
 
-# --- RAG / base de conocimiento ---
-# Chroma sobre FAISS: trae persistencia, upsert y filtrado por metadatos de
-# fabrica. Ver el plan y AGENTS.md 6.
-chromadb>=0.5,<2.0
+# --- Documentos para el RAG ---
 pypdf>=5.0,<6.0
 
 # --- Herramientas opcionales del agente ---

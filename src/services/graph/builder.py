@@ -11,7 +11,8 @@ flow genuinely needs it -- adding a node. The nodes below do not get edited.
 
 from __future__ import annotations
 
-from langgraph.checkpoint.memory import MemorySaver
+from typing import Any
+
 from langgraph.graph import END, START, StateGraph
 
 from models.domain_config import DomainSpec
@@ -31,12 +32,16 @@ def build_graph(
     retriever: RetrievalPort,
     domain: DomainSpec,
     top_k: int = 4,
-    checkpointer: MemorySaver | None = None,
+    checkpointer: Any | None = None,
 ):
     """Compile the graph.
 
-    The checkpointer gives per-``thread_id`` memory. MemorySaver is enough for
-    the event; a persistent one can be swapped in without touching the nodes.
+    The checkpointer gives per-``thread_id`` memory and is injected rather than
+    constructed here: production passes the PostgreSQL saver, tests pass an
+    in-memory one. The nodes are identical either way -- which is the point.
+
+    Passing ``None`` compiles a graph with no memory at all; only useful for
+    testing a single turn in isolation.
     """
     graph = StateGraph(ConversationState)
 
@@ -62,4 +67,4 @@ def build_graph(
     graph.add_edge("retrieve_context", "respond")
     graph.add_edge("respond", END)
 
-    return graph.compile(checkpointer=checkpointer or MemorySaver())
+    return graph.compile(checkpointer=checkpointer)
