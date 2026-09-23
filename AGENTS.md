@@ -24,10 +24,12 @@ de PQR o de finanzas, está fuera de alcance para esta fase.
 |---|---|---|
 | Orquestación de agente | LangGraph (grafo con estado, checkpointer) | Fijo |
 | API | FastAPI | Fijo |
-| LLM | Azure OpenAI / OpenAI (intercambiable por `MODEL_PROVIDER`) | Fijo |
+| LLM | **NVIDIA NIM** (tier gratuito); Azure/OpenAI como respaldo | Fijo |
 | **Voz (STT/TTS)** | **PENDIENTE DE DECISIÓN** — ver §1.1 | Abierto |
 | **Avatar 3D** | **PENDIENTE DE DECISIÓN** — ver §1.2 | Abierto |
-| **RAG / base de conocimiento** | **PENDIENTE DE DECISIÓN** — ver §6 | Abierto |
+| **RAG / base de conocimiento** | PostgreSQL + pgvector — ver §6 | **Decidido** |
+| Base de datos relacional | PostgreSQL 17 (contenedor, puerto 5433) | **Decidido** |
+| Embeddings | `intfloat/multilingual-e5-base`, local, 768 dims | **Decidido** |
 | Frontend | Astro (panel de chat/voz, visualización de estado del grafo) | Fijo |
 | Infraestructura como código | Terraform | Fijo |
 | Despliegue | Azure Container Apps | Fijo |
@@ -69,6 +71,25 @@ palabra, el lip-sync es casi gratis; si no, hay que derivarlo del audio.
   `.claude/skills/azure-voice-live/` queda como material histórico. Su patrón
   puerto/adaptador sigue siendo válido y es la base de `VoicePort` (§5); sus
   detalles de protocolo (eventos WebSocket, `session.update`) ya **no aplican**.
+- **Vector store: PostgreSQL + pgvector**, en contenedor Docker (`pgvector/
+  pgvector:pg17`) en el puerto 5433. Chroma queda descartado: un chat agéntico
+  necesita datos relacionales junto a los vectores, y dos almacenes son dos
+  almacenes que sincronizar.
+- **LLM: NVIDIA NIM** (gratuito, `build.nvidia.com`), modelo
+  `openai/gpt-oss-20b` con `NVIDIA_REASONING_EFFORT=low`. Elegido midiendo
+  contra la API real, no por reputacion: ver CHANGELOG 0.3.0. Se accede con
+  `ChatOpenAI` apuntando a `integrate.api.nvidia.com` porque
+  `langchain-nvidia-ai-endpoints` descarta `reasoning_effort`, que vale un
+  6x de latencia. Azure y OpenAI siguen en el factory como respaldo de pago.
+  **Al cambiar de modelo, no confies en el catalogo de la libreria**: lista
+  modelos muertos. Pregunta a `GET /v1/models` y prueba antes de elegir.
+- **Embeddings: `intfloat/multilingual-e5-base`**, corriendo local. Los modelos
+  en inglés (all-MiniLM, bge-base-en, msmarco, e5-base) quedan descartados
+  porque nuestro corpus es en español y fallarían de forma silenciosa. LaBSE
+  también: está optimizado para emparejar traducciones, no para recuperación.
+- **Autenticación: identificación por cédula sin contraseña.** Decisión de
+  alcance para la demo. **No es autenticación real** y está documentado como
+  tal en ARCHITECTURE.md §8.
 
 ## 2. Arquitectura — por capas
 ```
@@ -76,11 +97,16 @@ api/           # FastAPI — routers, request/response, validación de entrada.
                # Cero lógica de negocio aquí, solo traduce HTTP <-> services/.
 services/      # Lógica de negocio: el grafo de LangGraph, orquestación,
                # reglas de decisión. Aquí vive el "cerebro" del agente.
-integrations/  # Clientes concretos de servicios externos: Azure OpenAI,
-               # proveedor de voz, proveedor de avatar, vector store.
+integrations/  # Clientes concretos de servicios externos.
+               #   db/         repositorios y pool de PostgreSQL
+               #   retrieval/  pgvector, embeddings, cargadores
+               #   llm/        factory de proveedores (NVIDIA, Azure, OpenAI)
+               #   voice/      VACÍO a propósito (§8)
+               #   avatar/     VACÍO a propósito (§8)
 models/        # Esquemas Pydantic — request/response de la API, estado
                # del grafo, estructuras compartidas entre capas.
 infra/         # Terraform.
+migrations/    # SQL versionado. Fuente de verdad del modelo relacional.
 ```
 
 Regla de dependencia: cada capa llama solo a la capa inmediatamente debajo.
@@ -136,7 +162,9 @@ contrato es lo que nos permite avanzar hoy y enchufar el proveedor después.
 | `LLMPort` | Chat model | Decidido (Azure OpenAI / OpenAI) |
 | `VoicePort` | STT y TTS: audio del usuario → texto, texto → audio | **Por decidir** (§1.1) |
 | `AvatarPort` | Renderizado 3D + lip-sync sincronizado con el audio | **Por decidir** (§1.2) |
-| `RetrievalPort` | Ingesta y recuperación de conocimiento (RAG) | **Por decidir** (§6) |
+| `RetrievalPort` | Ingesta y recuperación de conocimiento (RAG) | PostgreSQL + pgvector |
+| `UserRepositoryPort` | Usuarios y sesiones | PostgreSQL |
+| `ConversationRepositoryPort` | Conversaciones e historial legible | PostgreSQL |
 
 **Regla dura:** cambiar el proveedor de cualquiera de estos puertos debe
 requerir editar **solo `integrations/`**. Si un cambio de proveedor obliga a
@@ -166,8 +194,12 @@ Por tanto el RAG se diseña alrededor de la ingesta, no del contenido:
   formato nuevo no toca el resto del pipeline.
 - La recuperación se expone a `services/` a través de `RetrievalPort`, para
   que el vector store se pueda cambiar sin tocar el grafo.
-- Candidatos de almacén (sin decidir): Chroma o FAISS en local para el
-  desarrollo, pgvector o Azure AI Search si el despliegue lo exige.
+- **Almacén decidido: PostgreSQL + pgvector** (ver §1.3). Chroma quedó
+  descartado porque el chat agéntico necesita datos relacionales junto a los
+  vectores, y mantener dos almacenes obliga a sincronizarlos.
+- La ingesta es `python -m scripts.ingest --path <carpeta> --reset`.
+- La dimensión del vector está fija en la migración (`vector(768)`). Cambiar de
+  modelo de embedding exige una migración nueva y reindexar.
 
 El núcleo pregunta "dame contexto relevante para este turno"; nunca sabe qué
 motor responde ni en qué formato estaba el documento original.
@@ -224,7 +256,11 @@ Decisión registrada conforme a §8. Instalados y en uso:
   externa real — nunca golpear el servicio real en la suite por defecto.
 - Cada puerto de §5 tiene un doble en memoria; la suite completa debe correr
   sin credenciales, sin red, sin micrófono y sin GPU.
-- Comando: `pytest -v` desde la raíz.
+- La suite por defecto corre con dobles en memoria (`tests/doubles/`): sin
+  Docker, sin red, sin credenciales. Los tests contra PostgreSQL real viven en
+  `tests/integration/`, están marcados `integration` y se saltan solos si no hay
+  base accesible.
+- Comandos: `pytest` (offline) y `pytest -m integration` (contra la base).
 - Sin definir todavía: umbral mínimo de cobertura exigido antes de un merge.
 
 ## 12. CI/CD (propuesta — confirmar antes de tratarla como fija)
