@@ -1,0 +1,35 @@
+# PostgreSQL 17 con pgvector ya compilado adentro.
+#
+# Por que un contenedor y no el PostgreSQL 17 nativo que ya tienes instalado:
+# ese no trae pgvector, y compilarlo en Windows obliga a cada persona del
+# equipo a repetir el proceso con las herramientas de Visual Studio. Con esto,
+# `docker compose up -d` levanta una base identica para todos.
+#
+# Puerto 5433 a proposito: tu PostgreSQL nativo sigue en 5432, intacto.
+#
+# La contrasena por defecto es de desarrollo local. Se puede sobreescribir
+# desde .env sin tocar este archivo (AGENTS.md seccion 8).
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: kognia-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kognia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kognia_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-kognia}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Sin esto, `docker compose up -d` devuelve el control antes de que
+      # Postgres acepte conexiones, y la migracion falla por carrera.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kognia} -d ${POSTGRES_DB:-kognia}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pgdata:
