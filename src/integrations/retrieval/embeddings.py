@@ -115,7 +115,13 @@ class E5Embedder:
         from sentence_transformers import SentenceTransformer
 
         self._model = SentenceTransformer(model_name)
-        actual = self._model.get_sentence_embedding_dimension()
+        # sentence-transformers 6.x renamed this method; the old name still
+        # works but warns and will be removed. The fallback keeps the 3.x-5.x
+        # range that requirements.txt allows.
+        get_dim = getattr(self._model, "get_embedding_dimension", None) or getattr(
+            self._model, "get_sentence_embedding_dimension"
+        )
+        actual = get_dim()
         if actual != EMBEDDING_DIMENSIONS:
             # Fail loudly here rather than letting Postgres reject every insert
             # with an opaque dimension error at ingestion time.
