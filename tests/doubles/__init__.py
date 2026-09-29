@@ -14,7 +14,9 @@ from tests.doubles.fake_repositories import (
     InMemoryConversationRepository,
     InMemoryUserRepository,
 )
+from tests.doubles.fake_llm import FakeChatModel
 from tests.doubles.fake_retriever import InMemoryRetriever
+from tests.doubles.hashing_embedder import HashingEmbedder
 
 __all__ = [
     "InMemoryConversationRepository",

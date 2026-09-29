@@ -16,6 +16,20 @@ from models.conversation import RouteDecision
 from models.retrieval import RetrievedChunk
 
 
+class UserContext(TypedDict, total=False):
+    """Who the agent is talking to.
+
+    Set by chat_service from the authenticated session on every turn -- never
+    by the model (AGENTS.md section 8). The cedula is already masked: this state
+    is persisted by the checkpointer, and nothing in the graph needs the full
+    number.
+    """
+
+    user_id: str
+    display_name: str | None
+    cedula_last4: str
+
+
 class ConversationState(TypedDict, total=False):
     """Shared state for one conversation thread."""
 
@@ -40,8 +54,11 @@ class ConversationState(TypedDict, total=False):
     # How many user turns this thread has seen. Drives escalation rules.
     turn_count: int
 
+    # The person on the other side, from the session. None for anonymous turns.
+    user: UserContext | None
 
-def initial_state(message: str) -> ConversationState:
+
+def initial_state(message: str, user: UserContext | None = None) -> ConversationState:
     """Build the state for a fresh turn."""
     from langchain_core.messages import HumanMessage
 
@@ -52,4 +69,5 @@ def initial_state(message: str) -> ConversationState:
         missing_fields=[],
         route=None,
         retrieved=[],
+        user=user,
     )

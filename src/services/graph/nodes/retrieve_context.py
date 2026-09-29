@@ -25,7 +25,7 @@ def make_retrieve_context(
         query = ""
         for message in reversed(state.get("messages", [])):
             if isinstance(message, HumanMessage):
-                query = str(message.content)
+                query = message.text
                 break
 
         if not query:

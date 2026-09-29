@@ -14,7 +14,7 @@ from typing import Any
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from integrations.retrieval.embeddings import HashingEmbedder
+from tests.doubles.hashing_embedder import HashingEmbedder
 from models.retrieval import Chunk, Document, RetrievedChunk
 
 

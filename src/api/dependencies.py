@@ -11,6 +11,7 @@ the layer rule of AGENTS.md section 2 still holds at call time.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -19,6 +20,7 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from config import Settings, get_settings
 from integrations.db.conversation_repository import PostgresConversationRepository
+from integrations.db.migrations import pending
 from integrations.db.pool import create_pool
 from integrations.db.user_repository import PostgresUserRepository
 from integrations.llm.factory import build_llm
@@ -62,6 +64,15 @@ async def build_container(settings: Settings | None = None) -> Container:
     # Fails here with an actionable message rather than as a pool timeout.
     assert_event_loop_is_usable()
 
+    # Fail at startup, with the fix spelled out, rather than with an opaque
+    # "relation does not exist" in the middle of someone's first request.
+    todo = await asyncio.to_thread(pending, settings.database_url)
+    if todo:
+        raise RuntimeError(
+            f"La base tiene migraciones pendientes: {', '.join(todo)}. "
+            f"Corre:  python -m scripts.migrate"
+        )
+
     pool = create_pool(
         settings.database_url,
         min_size=settings.db_pool_min_size,
@@ -81,7 +92,7 @@ async def build_container(settings: Settings | None = None) -> Container:
     llm = build_llm(settings)
     retriever = PgVectorRetriever(
         pool=pool,
-        embedder=build_embedder(settings.embedding_provider, settings.embedding_model),
+        embedder=build_embedder(settings.embedding_model),
     )
     graph = build_graph(
         llm=llm,

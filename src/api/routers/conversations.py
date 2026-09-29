@@ -11,10 +11,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import Container, current_user, get_container
+from api.errors import SESSION_ERRORS, error_responses
 from models.auth import Conversation, MessageRecord, User
 from services.chat_service import ConversationForbidden, ConversationNotFound
 
-router = APIRouter(prefix="/conversations", tags=["conversations"])
+# Every route here needs a session, so the 401 is declared once for all of them.
+router = APIRouter(
+    prefix="/conversations",
+    tags=["conversations"],
+    responses=error_responses(SESSION_ERRORS),
+)
 
 
 @router.get("", response_model=list[Conversation])
@@ -35,7 +41,14 @@ async def create_conversation(
     )
 
 
-@router.get("/{conversation_id}/messages", response_model=list[MessageRecord])
+@router.get(
+    "/{conversation_id}/messages",
+    response_model=list[MessageRecord],
+    responses=error_responses({
+        403: "La conversacion pertenece a otro usuario.",
+        404: "No existe una conversacion con ese id.",
+    }),
+)
 async def conversation_history(
     conversation_id: UUID,
     user: User = Depends(current_user),

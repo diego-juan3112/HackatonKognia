@@ -2,18 +2,30 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
+from models.auth import User
 from models.conversation import RouteDecision
 from services.chat_service import ConversationForbidden, ConversationNotFound
 
 
-async def test_a_turn_persists_both_sides(chat_service, conversations):
-    user_id = uuid4()
+def _user(name: str = "Ana") -> User:
+    """A registered person, as the session would hand it to the service."""
+    return User(
+        id=uuid4(),
+        cedula=f"10{uuid4().int % 10**8:08d}",
+        display_name=name,
+        created_at=datetime.now(timezone.utc),
+    )
 
-    result = await chat_service.send(user_id, "cual es el horario de atencion")
+
+async def test_a_turn_persists_both_sides(chat_service, conversations):
+    user = _user()
+
+    result = await chat_service.send(user, "cual es el horario de atencion")
 
     stored = await conversations.history(result.conversation_id)
     assert [m.role for m in stored] == ["user", "agent"]
@@ -22,9 +34,9 @@ async def test_a_turn_persists_both_sides(chat_service, conversations):
 
 
 async def test_the_agent_message_records_its_decision(chat_service, conversations):
-    user_id = uuid4()
+    user = _user()
 
-    result = await chat_service.send(user_id, "cual es el horario de atencion")
+    result = await chat_service.send(user, "cual es el horario de atencion")
 
     agent_message = (await conversations.history(result.conversation_id))[1]
     assert agent_message.intent == "horario"
@@ -35,20 +47,20 @@ async def test_the_agent_message_records_its_decision(chat_service, conversation
 
 
 async def test_omitting_conversation_id_starts_a_new_one(chat_service):
-    user_id = uuid4()
+    user = _user()
 
-    first = await chat_service.send(user_id, "hola")
-    second = await chat_service.send(user_id, "hola otra vez")
+    first = await chat_service.send(user, "hola")
+    second = await chat_service.send(user, "hola otra vez")
 
     assert first.conversation_id != second.conversation_id
 
 
 async def test_passing_conversation_id_continues_the_same_thread(chat_service):
-    user_id = uuid4()
+    user = _user()
 
-    first = await chat_service.send(user_id, "cual es el horario")
+    first = await chat_service.send(user, "cual es el horario")
     second = await chat_service.send(
-        user_id, "y los canales", conversation_id=first.conversation_id
+        user, "y los canales", conversation_id=first.conversation_id
     )
 
     assert second.conversation_id == first.conversation_id
@@ -56,24 +68,24 @@ async def test_passing_conversation_id_continues_the_same_thread(chat_service):
 
 
 async def test_history_accumulates_across_turns(chat_service, conversations):
-    user_id = uuid4()
+    user = _user()
 
-    first = await chat_service.send(user_id, "cual es el horario")
-    await chat_service.send(user_id, "y los canales", conversation_id=first.conversation_id)
+    first = await chat_service.send(user, "cual es el horario")
+    await chat_service.send(user, "y los canales", conversation_id=first.conversation_id)
 
     assert len(await conversations.history(first.conversation_id)) == 4
 
 
 async def test_cannot_write_into_someone_elses_conversation(chat_service):
     """Guessing a UUID must not grant access to another user's thread."""
-    owner = await chat_service.send(uuid4(), "hola")
+    owner = await chat_service.send(_user(), "hola")
 
     with pytest.raises(ConversationForbidden):
-        await chat_service.send(uuid4(), "intruso", conversation_id=owner.conversation_id)
+        await chat_service.send(_user(), "intruso", conversation_id=owner.conversation_id)
 
 
 async def test_cannot_read_someone_elses_history(chat_service):
-    owner = await chat_service.send(uuid4(), "hola")
+    owner = await chat_service.send(_user(), "hola")
 
     with pytest.raises(ConversationForbidden):
         await chat_service.history(uuid4(), owner.conversation_id)
@@ -81,15 +93,15 @@ async def test_cannot_read_someone_elses_history(chat_service):
 
 async def test_unknown_conversation_is_reported_as_missing(chat_service):
     with pytest.raises(ConversationNotFound):
-        await chat_service.send(uuid4(), "hola", conversation_id=uuid4())
+        await chat_service.send(_user(), "hola", conversation_id=uuid4())
 
 
 async def test_listing_only_returns_your_own(chat_service):
-    mine, theirs = uuid4(), uuid4()
+    mine, theirs = _user(), _user()
     await chat_service.send(mine, "hola")
     await chat_service.send(theirs, "hola")
 
-    listed = await chat_service.list_conversations(mine)
+    listed = await chat_service.list_conversations(mine.id)
 
     assert len(listed) == 1
-    assert listed[0].user_id == mine
+    assert listed[0].user_id == mine.id

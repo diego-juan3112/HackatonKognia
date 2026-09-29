@@ -28,8 +28,23 @@ def _conversation_text(state: ConversationState) -> str:
     parts = []
     for message in state.get("messages", []):
         role = "user" if isinstance(message, HumanMessage) else "agent"
-        parts.append(f"{role}: {message.content}")
+        parts.append(f"{role}: {message.text}")
     return "\n".join(parts)
+
+
+def _strip_code_fence(text: str) -> str:
+    """Remove a ```json ... ``` wrapper if the model added one.
+
+    Gemini frequently fences JSON in markdown even when asked for a bare
+    object. Without this, a perfectly good extraction parses as "nothing
+    found" and the agent keeps asking for a field the user already gave.
+    """
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        _, _, stripped = stripped.partition("\n")
+        if stripped.rstrip().endswith("```"):
+            stripped = stripped.rstrip()[:-3]
+    return stripped.strip()
 
 
 async def _extract(llm: LLMPort, field_names: list[str], conversation: str) -> dict:
@@ -38,7 +53,7 @@ async def _extract(llm: LLMPort, field_names: list[str], conversation: str) -> d
         [SystemMessage(content=system), HumanMessage(content=conversation)]
     )
     try:
-        parsed = json.loads(str(response.content))
+        parsed = json.loads(_strip_code_fence(response.text))
     except (json.JSONDecodeError, TypeError):
         # A model that does not return JSON simply yields nothing this turn;
         # the field stays missing and the agent asks for it.

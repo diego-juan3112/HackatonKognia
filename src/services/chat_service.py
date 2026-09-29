@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from models.auth import Conversation, MessageRecord
+from models.auth import Conversation, MessageRecord, User
 from models.conversation import RouteDecision, TurnResult
 from models.domain_config import DomainSpec
 from models.ports import ConversationRepositoryPort
-from services.graph.state import initial_state
+from services.graph.state import UserContext, initial_state
 
 
 class ConversationNotFound(LookupError):
@@ -24,6 +24,15 @@ class ConversationNotFound(LookupError):
 
 class ConversationForbidden(PermissionError):
     """The conversation exists but belongs to somebody else."""
+
+
+def _context_for(user: User) -> UserContext:
+    """What the graph is told about the person. Only what it needs."""
+    return UserContext(
+        user_id=str(user.id),
+        display_name=user.display_name,
+        cedula_last4=user.cedula[-4:],
+    )
 
 
 class ChatService:
@@ -55,11 +64,11 @@ class ChatService:
 
     async def send(
         self,
-        user_id: UUID,
+        user: User,
         message: str,
         conversation_id: UUID | None = None,
     ) -> TurnResult:
-        conversation = await self._resolve(user_id, conversation_id)
+        conversation = await self._resolve(user.id, conversation_id)
 
         await self._conversations.append_message(
             conversation_id=conversation.id, role="user", content=message
@@ -68,11 +77,13 @@ class ChatService:
         # thread_id is what the checkpointer resumes the graph state by; it is
         # what makes this turn aware of the previous ones.
         result = await self._graph.ainvoke(
-            initial_state(message),
+            initial_state(message, user=_context_for(user)),
             config={"configurable": {"thread_id": conversation.thread_id}},
         )
 
-        reply = str(result["messages"][-1].content) if result.get("messages") else ""
+        # .text, not str(.content): in langchain-core 1.x a model reply can be a
+        # list of content blocks, and str() of that list is not the answer.
+        reply = result["messages"][-1].text if result.get("messages") else ""
         route = result.get("route") or RouteDecision.ANSWER
         sources = sorted({item.source for item in result.get("retrieved", [])})
 

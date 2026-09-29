@@ -1,17 +1,14 @@
 # --- Core del agente ---
-langgraph>=0.6,<0.7
-langchain-core>=0.3,<0.4
-langchain-text-splitters>=0.3,<0.4
+# Linea 1.x de LangChain/LangGraph. Se migro desde 0.3/0.6 porque la
+# integracion actual de Gemini (langchain-google-genai 4.x) exige
+# langchain-core >= 1.6. Ver CHANGELOG 0.4.0.
+langgraph>=1.2,<2.0
+langchain-core>=1.6,<2.0
+langchain-text-splitters>=1.1,<2.0
 
 # --- LLM ---
-# Un solo cliente para los tres proveedores. NVIDIA NIM habla el protocolo de
-# OpenAI, asi que ChatOpenAI apuntando a su base_url sirve para NVIDIA (el
-# proveedor por defecto, gratuito), para OpenAI directo y, via AzureChatOpenAI,
-# para Azure.
-#
-# Se quito langchain-nvidia-ai-endpoints: descartaba el parametro
-# reasoning_effort, que vale un 6x de latencia. Ver integrations/llm/factory.py.
-langchain-openai>=0.2,<0.3
+# Gemini (Google AI Studio) sobre el SDK oficial google-genai.
+langchain-google-genai>=4.4,<5.0
 
 # --- API ---
 fastapi>=0.115,<1.0
@@ -20,10 +17,11 @@ uvicorn[standard]>=0.30,<1.0
 # --- Base de datos ---
 psycopg[binary,pool]>=3.2,<4.0
 pgvector>=0.3,<1.0
-langgraph-checkpoint-postgres>=2.0,<4.0
+langgraph-checkpoint-postgres>=3.1,<4.0
 
 # --- Embeddings locales ---
-# Descarga intfloat/multilingual-e5-base (~1.1 GB) la primera vez y lo cachea.
+# intfloat/multilingual-e5-base. Descarga ~1.1 GB la primera vez y lo cachea;
+# despues carga desde la cache sin tocar la red.
 sentence-transformers>=3.0,<7.0
 
 # --- Config ---
@@ -33,10 +31,6 @@ pyyaml>=6.0,<7.0
 
 # --- Documentos para el RAG ---
 pypdf>=5.0,<6.0
-
-# --- Herramientas opcionales del agente ---
-# Descomenta si vas a usar busqueda web con Tavily:
-# langchain-tavily>=0.1
 
 # --- Testing ---
 pytest>=8.0

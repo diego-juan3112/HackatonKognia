@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from models.auth import Conversation, MessageRecord, Session, User
+from models.auth import Conversation, MessageRecord, Session, User, UserAlreadyExists
 
 
 def _now() -> datetime:
@@ -34,7 +34,7 @@ class InMemoryUserRepository:
     async def create(self, cedula: str, display_name: str | None = None) -> User:
         # Mirrors the UNIQUE constraint on users.cedula.
         if await self.find_by_cedula(cedula) is not None:
-            raise ValueError(f"La cedula {cedula} ya existe.")
+            raise UserAlreadyExists(cedula)
         user = User(id=uuid4(), cedula=cedula, display_name=display_name, created_at=_now())
         self.users[user.id] = user
         return user

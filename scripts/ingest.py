@@ -35,15 +35,10 @@ async def run(path: str, reset: bool) -> int:
         print(f"Formatos soportados: {', '.join(SUPPORTED_SUFFIXES)}")
         return 1
 
-    # Built before opening the pool: with EMBEDDING_PROVIDER=local this loads a
-    # ~1.1 GB model, and failing there should not leave a connection dangling.
-    if settings.embedding_provider == "local":
-        print(f"Embeddings: local ({settings.embedding_model})")
-    else:
-        # Naming a model here would be misleading: the hashing embedder ignores
-        # EMBEDDING_MODEL entirely.
-        print("Embeddings: fake (lexico, sin modelo -- no es semantico)")
-    embedder = build_embedder(settings.embedding_provider, settings.embedding_model)
+    # Built before opening the pool: this loads a ~1.1 GB model, and failing
+    # there should not leave a connection dangling.
+    print(f"Embeddings: {settings.embedding_model} (cargando modelo...)")
+    embedder = build_embedder(settings.embedding_model)
 
     pool = create_pool(settings.database_url, min_size=1, max_size=4)
     try:

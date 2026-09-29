@@ -1,6 +1,7 @@
 """Shared fixtures.
 
-Everything here runs offline: fake model, hashing embeddings, in-memory
+Everything here runs offline: the doubles in tests/doubles/ stand in for
+Gemini, E5 and the database -- fake model, hashing embeddings, in-memory
 retriever and repositories. No fixture may require a credential, a network
 call or a running database -- AGENTS.md section 11.
 
@@ -16,7 +17,7 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 from config import Settings
-from integrations.llm.fake_llm import FakeChatModel
+from tests.doubles.fake_llm import FakeChatModel
 from platform_compat import ensure_psycopg_compatible_event_loop
 from models.domain_config import DomainSpec
 from models.retrieval import Document
@@ -110,7 +111,5 @@ async def chat_service(graph, conversations, domain) -> ChatService:
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
-        model_provider="fake",
-        embedding_provider="fake",
         domain_config_path=REPO_ROOT / "config" / "domains" / "faq_demo.yaml",
     )

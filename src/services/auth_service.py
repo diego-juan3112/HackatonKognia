@@ -13,7 +13,7 @@ import re
 from datetime import datetime, timezone
 from uuid import UUID
 
-from models.auth import Identification, Session, User
+from models.auth import Identification, Session, User, UserAlreadyExists
 from models.ports import UserRepositoryPort
 
 # Colombian cedulas are 6-10 digits. Kept deliberately loose: rejecting a valid
@@ -43,22 +43,38 @@ def normalize_cedula(raw: str) -> str:
     return cleaned
 
 
+class UserNotFound(LookupError):
+    """No user is registered with that cedula."""
+
+
 class AuthService:
-    """Find-or-create a user by cedula and open a session for them."""
+    """Register users and open sessions for registered ones.
+
+    Registration and login are separate on purpose: logging in with an unknown
+    cedula is an error, not a silent sign-up.
+    """
 
     def __init__(self, users: UserRepositoryPort, session_ttl_hours: int = 12) -> None:
         self._users = users
         self._ttl = session_ttl_hours
 
-    async def identify(self, cedula: str, display_name: str | None = None) -> Identification:
+    async def register(self, cedula: str, display_name: str) -> User:
+        """Create a user. Raises UserAlreadyExists if the cedula is taken."""
         cedula = normalize_cedula(cedula)
+        if await self._users.find_by_cedula(cedula) is not None:
+            raise UserAlreadyExists(cedula)
+        # The repository also raises UserAlreadyExists if a concurrent request
+        # won the race between the check above and this insert.
+        return await self._users.create(cedula, display_name.strip() or None)
 
+    async def login(self, cedula: str) -> Identification:
+        """Open a session for a registered user. Raises UserNotFound otherwise."""
+        cedula = normalize_cedula(cedula)
         user = await self._users.find_by_cedula(cedula)
         if user is None:
-            user = await self._users.create(cedula, display_name)
-        else:
-            await self._users.touch_last_seen(user.id)
+            raise UserNotFound(f"No hay un usuario registrado con la cedula {cedula}.")
 
+        await self._users.touch_last_seen(user.id)
         session = await self._users.create_session(user.id, self._ttl)
 
         return Identification(

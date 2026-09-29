@@ -7,7 +7,7 @@ depend upwards. If the ports lived in ``services/``, every adapter would have
 to import the core and the dependency rule would break.
 
 Hard rule these exist to enforce: swapping a provider must mean editing only
-``integrations/``. Nothing here mentions Cartesia, Deepgram, OpenAI, Chroma or
+``integrations/``. Nothing here mentions Gemini, Cartesia, Deepgram, pgvector or
 any other vendor, and no vendor SDK type appears in a signature.
 """
 
@@ -25,7 +25,7 @@ from models.conversation import AudioChunk, SpeechChunk, Utterance, VisemeFrame
 from models.retrieval import Document, RetrievedChunk
 
 # ---------------------------------------------------------------------------
-# LLM -- already decided (Azure OpenAI / OpenAI), so we reuse LangChain's
+# LLM -- the provider is decided (see integrations/llm), so we reuse LangChain's
 # stable interface instead of inventing our own wrapper.
 # ---------------------------------------------------------------------------
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,55 +23,40 @@ EMBEDDING_DIMENSIONS = 768
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # -- Model provider ---------------------------------------------------
-    # "fake"   runs the whole graph deterministically, no network, no key.
-    # "nvidia" is the real default (free tier at build.nvidia.com).
-    # "openai"/"azure" are kept as a paid fallback if NVIDIA credits run out
-    # mid-demo -- switching is one environment variable.
-    model_provider: Literal["nvidia", "azure", "openai", "fake"] = "fake"
-
-    # NVIDIA NIM
+    # -- LLM: Gemini (Google AI Studio) ------------------------------------
+    gemini_api_key: str = ""
+    # Chosen by measurement through our own factory (2026-09-28), with the three
+    # prompt shapes the graph uses (intent, JSON extraction, Spanish answer):
+    #   gemini-3.5-flash-lite  ~0.6-1.0 s median, 15/15 correct, 0 failures
+    #   gemini-3.8-flash       ~8.5 s, 164 reasoning tokens, 4 of 6 rate-limited
+    #   gemini-2.5-flash(-lite) 404: "no longer available to new users", even
+    #                          though the model list still returns them
+    # This model ignores `temperature` (fixed sampling defaults) -- it warns once.
     #
-    # gpt-oss-20b chosen by measurement, not by reputation (2026-09-23):
-    #   nemotron-3-super-120b-a12b  1.1s median but 3 of 6 calls -> HTTP 503
-    #   gpt-oss-20b                 7.3s median, 0 of 6 failed, all three
-    #                               prompt shapes correct (intent, JSON, Spanish)
-    #
-    # Despite the name it is an open-weights model served by NVIDIA: no OpenAI
-    # account and no payment involved.
-    #
-    # Do NOT trust ChatNVIDIA.get_available_models() when picking another one --
-    # its catalogue is stale and lists models that return 410 Gone. Ask the API
-    # itself: GET https://integrate.api.nvidia.com/v1/models
-    nvidia_api_key: str = ""
-    nvidia_model: str = "openai/gpt-oss-20b"
-    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    # The model list is not proof a model works: call it before choosing it.
+    gemini_model: str = "gemini-3.5-flash-lite"
 
-    # gpt-oss is a reasoning model and by default burns most of its budget on
-    # internal thinking. Measured over 5 calls each, same prompt:
-    #   sin el parametro -> mediana 19.4s, 100 tokens de salida
-    #   effort="low"     -> mediana  3.3s,  27 tokens de salida
-    # Same answer quality for tasks this simple. Set to "medium"/"high" only if
-    # the real domain turns out to need actual reasoning.
-    nvidia_reasoning_effort: str = "low"
-
-    # Azure OpenAI / Azure AI Foundry (fallback)
-    azure_openai_endpoint: str = ""
-    azure_openai_deployment: str = "gpt-4o-mini"
-    azure_openai_api_key: str = ""
-    azure_openai_api_version: str = "2024-10-21"
-
-    # OpenAI direct (fallback)
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
-
-    # Optional tools
-    tavily_api_key: str = ""
+    # Gemini 3+ "thinks" before answering, and that thinking dominates latency.
+    # flash-lite used 0 reasoning tokens even without this, so "minimal" is a
+    # guard, not the source of its speed.
+    # Verified that the value reaches the API: gemini-3.8-flash answers 400
+    # "Thinking level MINIMAL is not supported" -- so change this together with
+    # the model. 2.5 models used a token budget instead; only one is sent.
+    gemini_thinking_level: str | None = "minimal"  # minimal | low | medium | high
+    gemini_thinking_budget: int | None = None
+    gemini_timeout_seconds: float = 30.0
+    # The client retries rate-limited calls with backoff. Its default (6) can
+    # hang a demo for a long time; two retries then a clear error is better.
+    gemini_max_retries: int = 2
 
     # -- Database ---------------------------------------------------------
-    # Points at the docker-compose container on 5433, NOT at the native
-    # PostgreSQL 17 on 5432, which stays untouched.
-    database_url: str = "postgresql://kognia:kognia_local_dev@localhost:5433/kognia"
+    # Points at the docker-compose container on 5433, NOT at a native
+    # PostgreSQL on 5432. The password is deliberately absent from these
+    # defaults (AGENTS.md section 8): the real URLs come from .env.
+    database_url: str = "postgresql://kognia@localhost:5433/kognia"
+    # Integration tests run here, never on database_url. The name MUST end in
+    # "_test": the test fixtures refuse to truncate anything else.
+    test_database_url: str = "postgresql://kognia@localhost:5433/kognia_test"
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
 
@@ -80,9 +64,7 @@ class Settings(BaseSettings):
     domain_config_path: Path = REPO_ROOT / "config" / "domains" / "faq_demo.yaml"
 
     # -- Knowledge base ---------------------------------------------------
-    # "local" = intfloat/multilingual-e5-base on this machine (768 dims).
-    # "fake"  = deterministic hashing vectors, for tests and offline work.
-    embedding_provider: Literal["local", "fake"] = "fake"
+    # Runs locally on CPU, no API key. Must produce EMBEDDING_DIMENSIONS.
     embedding_model: str = "intfloat/multilingual-e5-base"
     retrieval_top_k: int = 4
 
@@ -96,7 +78,11 @@ class Settings(BaseSettings):
     @property
     def database_url_safe(self) -> str:
         """The connection URL with the password masked, safe to print or log."""
-        return re.sub(r"://([^:/@]+):([^@]+)@", r"://\1:***@", self.database_url)
+        return mask_password(self.database_url)
+
+
+def mask_password(url: str) -> str:
+    return re.sub(r"://([^:/@]+):([^@]+)@", r"://\1:***@", url)
 
 
 @lru_cache
