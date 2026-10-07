@@ -4,15 +4,15 @@ Este documento explica **qué hace cada archivo y por qué existe**. Está escri
 para que alguien que llega nuevo entienda el sistema completo sin tener que leer
 todo el código.
 
-Última actualización: 2026-09-22 (versión 0.3.0).
+Última actualización: 2026-09-28 (versión 0.4.0).
 
 ---
 
 ## 1. Qué es esto, en una frase
 
 Un agente conversacional genérico sobre **LangGraph**, expuesto por **FastAPI**,
-que responde consultas usando documentos indexados en **PostgreSQL + pgvector**,
-con usuarios identificados por cédula.
+que responde con **Gemini** usando documentos embebidos con **E5** en
+**PostgreSQL + pgvector**, con usuarios identificados por cédula.
 
 **No sabemos todavía cuál será el reto** (PQR o atención financiera, por voz o
 video). Por eso el núcleo modela *capacidades genéricas* y toda la parte
@@ -29,7 +29,7 @@ Imagina un empleado nuevo que atiende un chat:
 | `services/graph/` | El empleado: piensa y decide qué hacer |
 | `config/domains/*.yaml` | El manual de reglas sobre su escritorio |
 | PostgreSQL + pgvector | El archivero que consulta antes de responder |
-| El LLM (NVIDIA) | Su capacidad de leer y redactar |
+| El LLM (Gemini) | Su capacidad de leer y redactar |
 | `api/` | El mostrador donde el cliente le habla |
 | `integrations/` | Los cables que lo conectan al mundo real |
 
@@ -52,7 +52,7 @@ api/           ->  services/  ->  integrations/
 - `api/` **nunca** llama directo a `integrations/`. La única excepción
   documentada es `api/dependencies.py`, que es el *composition root*: su trabajo
   literal es ensamblar el objeto grafo.
-- `services/` **nunca** importa psycopg, chromadb, NVIDIA ni FastAPI. Solo
+- `services/` **nunca** importa psycopg, Gemini, sentence-transformers ni FastAPI. Solo
   conoce los `Protocol` de `models/ports.py`.
 - `models/` no tiene comportamiento: estructuras de datos y contratos.
 
@@ -75,12 +75,13 @@ grep -rn "^from integrations\|^import integrations" src/services/ src/models/
 | `CLAUDE.md` | Específico de Claude Code: MCP, plugins, skills. No reemplaza AGENTS.md. |
 | `ARCHITECTURE.md` | Este documento. |
 | `README.md` | Arranque rápido y comandos. |
+| `API.md` | Guía de los endpoints para el frontend: orden de llamadas, significado de cada campo y qué hacer con cada error. |
 | `CHANGELOG.md` | Historial de cambios por versión (exigido por AGENTS.md §7). |
 | `docker-compose.yml` | Levanta PostgreSQL 17 + pgvector en el puerto **5433**. Puerto distinto al 5432 a propósito, para no tocar un Postgres nativo que ya exista. |
 | `pyproject.toml` | Configuración de pytest (incluido `pythonpath = ["src"]`, sin el cual nada importa), ruff y mypy. |
 | `requirements.txt` | Dependencias, agrupadas y comentadas con el porqué de cada grupo. |
 | `.env.example` | Plantilla de variables. Se copia a `.env`, que está en `.gitignore`. |
-| `Dockerfile` | Imagen de la aplicación para Azure Container Apps. |
+| `Dockerfile` | Imagen de la aplicación para Azure Container Apps. **Desactualizado:** no copia `config/` ni `migrations/`, así que el contenedor no arrancaría, y descargaría E5 (~1 GB) en cada arranque. Se reescribe en la fase de despliegue. |
 
 ### 4.2 `migrations/` — el esquema de la base
 
@@ -99,7 +100,8 @@ librería al arrancar, con `.setup()`.
 
 | Archivo | Rol |
 |---|---|
-| `migrate.py` | Aplica las migraciones pendientes. Lleva registro en la tabla `schema_migrations`, así que es idempotente: correrlo dos veces no hace daño. Cada migración va en su propia transacción. |
+| `migrate.py` | Aplica las migraciones pendientes. `--status` muestra qué falta; `--test` apunta a la base de pruebas. Es un CLI delgado: la lógica vive en `src/integrations/db/migrations.py`. |
+| `seed.py` | Siembra la base de **desarrollo**: 2 usuarios demo (`1000000001` Ana Demo, `1000000002` Beto Demo) y el corpus de `docs/faq_demo` embebido con E5. Idempotente. |
 | `ingest.py` | Indexa documentos en la base de conocimiento. Es el comando que se corre el día del evento apuntando a lo que nos entreguen. Soporta `.md`, `.txt`, `.csv`, `.pdf`. |
 | `serve.py` | **Arranca el servidor. Úsalo en vez de invocar `uvicorn` directamente** — ver §4.4. |
 
@@ -151,7 +153,12 @@ En Linux y macOS las tres son no-ops: el loop por defecto ya es compatible.
 
 Único lugar donde se leen variables de entorno. Usa `pydantic-settings`, que
 llena cada campo desde el entorno o desde `.env`, y valida los valores (un
-`MODEL_PROVIDER=azuree` falla al arrancar, no en mitad de la demo).
+`RETRIEVAL_TOP_K=cuatro` falla al arrancar, no en mitad de la demo).
+
+No contiene contraseñas: los valores por defecto de `database_url` y
+`test_database_url` no llevan credenciales, que llegan solo desde `.env`.
+El modelo de Gemini por defecto lleva al lado, en un comentario, las
+mediciones con las que se eligió.
 
 Expone también `EMBEDDING_DIMENSIONS = 768`, que es la constante que debe
 coincidir con la columna `document_chunks.embedding vector(768)`.
@@ -179,7 +186,7 @@ rompería la regla de dependencia.
 
 | Archivo | Rol |
 |---|---|
-| `state.py` | `ConversationState`: lo que viaja entre nodos (mensajes, intención, datos recolectados, campos faltantes, ruta, contexto recuperado, número de turno). Ningún campo lleva nombre de un dominio de negocio. |
+| `state.py` | `ConversationState`: lo que viaja entre nodos (mensajes, intención, datos recolectados, campos faltantes, ruta, contexto recuperado, número de turno, y `user`: quién habla). Ningún campo lleva nombre de un dominio de negocio. `UserContext` lleva la cédula **ya enmascarada** (últimos 4 dígitos): el estado se persiste y nadie en el grafo necesita el número completo. |
 | `builder.py` | Ensambla y compila el grafo. Recibe LLM, retriever, dominio y checkpointer **por inyección** — por eso los mismos nodos corren contra Postgres en producción y contra memoria en los tests. |
 | `edges.py` | Las transiciones. `after_route` es una **función pura** que lee `state["route"]` y nada más. Aquí no hay LLM, no hay I/O, no hay reloj. |
 | `nodes/intake.py` | Recibe el turno: cuenta el turno y limpia el estado del turno anterior. |
@@ -187,29 +194,28 @@ rompería la regla de dependencia.
 | `nodes/collect_data.py` | Mira qué campos declarados faltan e intenta extraerlos de la conversación. |
 | `nodes/route.py` | **Decide el camino, sin LLM.** Reglas en orden: intención marcada como escalamiento → faltan datos → límite de turnos → responder. |
 | `nodes/retrieve_context.py` | Pide contexto al `RetrievalPort`. No sabe que detrás hay pgvector. |
-| `nodes/respond.py` | Redacta. Dos de las tres ramas (pedir dato, escalar) son deterministas y no gastan una llamada al modelo. |
+| `nodes/respond.py` | Redacta. Dos de las tres ramas (pedir dato, escalar) son deterministas y no gastan una llamada al modelo. En la tercera arma **un solo** mensaje de sistema (prompt del dominio + quién habla + contexto recuperado) y envía los últimos turnos de **ambos** lados de la conversación. |
 
 #### Servicios de aplicación
 
 | Archivo | Rol |
 |---|---|
 | `domain_loader.py` | Carga un `DomainSpec` desde YAML. Único lugar que lee ese archivo. |
-| `auth_service.py` | Identificación por cédula: normaliza el formato (`1.053.812.345` y `1053812345` son la misma persona), busca o crea el usuario, abre sesión, valida vencimiento. |
-| `chat_service.py` | Orquesta un turno completo: resolver conversación → correr el grafo → persistir ambos mensajes. Vive aquí y no en el router porque decidir qué significa un turno es lógica de negocio. También impone que **nadie lea ni escriba en la conversación de otro**. |
+| `auth_service.py` | `register` crea un usuario (falla si la cédula ya existe); `login` abre sesión **solo** para usuarios registrados. Normaliza el formato (`1.053.812.345` y `1053812345` son la misma persona) y valida vencimiento de sesiones. |
+| `chat_service.py` | Orquesta un turno completo: resolver conversación → correr el grafo → persistir ambos mensajes. Es quien le dice al grafo **quién habla** (nunca el LLM). Vive aquí y no en el router porque decidir qué significa un turno es lógica de negocio. También impone que **nadie lea ni escriba en la conversación de otro**. |
 
 ### 4.8 `src/integrations/` — el mundo exterior
 
 | Archivo | Rol |
 |---|---|
 | `db/pool.py` | Pool async de conexiones, uno por proceso. Registra el tipo `vector` de pgvector para que psycopg convierta listas de Python automáticamente. Se construye sin conectar (`open=False`) para que importar no toque la red. |
-| `db/user_repository.py` | Todo el SQL de identidad. |
+| `db/user_repository.py` | Todo el SQL de identidad. Traduce la violación de unicidad de la cédula a `UserAlreadyExists`, para que nada por encima sepa que existe psycopg. |
+| `db/migrations.py` | Descubrir, aplicar y listar migraciones pendientes, y crear la base si no existe. Lo usan el CLI, los tests de integración y la verificación de arranque. |
 | `db/conversation_repository.py` | Todo el SQL de conversaciones e historial. Guarda el mensaje y mueve `updated_at` **en la misma transacción**. |
 | `retrieval/pgvector_retriever.py` | Implementa `RetrievalPort` sobre pgvector. Usa el operador `<=>` (distancia coseno), que es para el que está construido el índice HNSW. Una transacción por documento: reingestar reemplaza atómicamente. |
-| `retrieval/embeddings.py` | `HashingEmbedder` (determinista, offline, para tests) y `E5Embedder` (`multilingual-e5-base`, local). La interfaz es **asimétrica** (`embed_documents` / `embed_query`) porque E5 exige prefijos `passage:` y `query:`; olvidarlos degrada notablemente la recuperación. |
+| `retrieval/embeddings.py` | `E5Embedder` (`multilingual-e5-base`, local, sin API key). Carga **primero desde la caché** y solo descarga si falta: sin eso consultaba a Hugging Face en cada arranque. La interfaz es **asimétrica** (`embed_documents` / `embed_query`) porque E5 exige prefijos `passage:` y `query:`. |
 | `retrieval/loaders.py` | Un cargador por formato. Agregar un formato nuevo es una función y una entrada en un diccionario. |
-| `llm/factory.py` | Único archivo que sabe qué proveedor responde. Los imports están dentro de cada rama para que elegir `fake` no exija tener instalado el SDK de NVIDIA. |
-| `llm/fake_llm.py` | Modelo determinista que **lee el prompt y responde en la forma que el nodo espera** (clasificar, extraer, responder citando contexto). No es un mock que devuelve una cadena fija: permite ejercitar el grafo completo sin gastar un token. |
-| `tools/` | Herramientas del agente (calculadora offline, búsqueda web opcional con Tavily). |
+| `llm/factory.py` | Único archivo que sabe que el LLM es Gemini. Envía solo el control de *thinking* que aplica al modelo, con timeout y reintentos acotados. |
 | `voice/README.md` | **Vacío a propósito.** AGENTS.md §8 prohíbe implementar un proveedor de voz mientras no se decida cuál. |
 | `avatar/README.md` | **Vacío a propósito**, por la misma razón. |
 
@@ -217,9 +223,11 @@ rompería la regla de dependencia.
 
 | Archivo | Rol |
 |---|---|
-| `main.py` | La app y su `lifespan`. **Nada se construye al importar**: el contenedor se arma al arrancar y se libera al apagar. Eso es lo que permite que los tests importen la app sin base de datos. |
-| `dependencies.py` | El *composition root*. Abre el pool, prepara el checkpointer, arma el grafo y los servicios. También define `current_user`, la dependencia que valida el header `X-Session-Id`. |
-| `routers/auth.py` | `POST /auth/identify` |
+| `main.py` | La app y su `lifespan`. **Nada se construye al importar**. También traduce los errores del modelo a códigos honestos: cuota agotada → 503 con `Retry-After`, otro fallo → 502. Captura las excepciones genéricas de `langchain-core`, no las de Google, así que no sabe qué proveedor hay detrás. |
+| `errors.py` | Declara los errores de cada ruta (`{"detail": ...}`) para que Swagger los muestre. Sin esto, un 404 aparece en `/docs` como *Undocumented*. |
+| `dependencies.py` | El *composition root*. **Se niega a arrancar si hay migraciones pendientes**, abre el pool, prepara el checkpointer, arma el grafo y los servicios. También define `current_user`, que valida el header `X-Session-Id`. |
+| `routers/users.py` | `POST /users` → 201, o 409 si la cédula ya existe |
+| `routers/auth.py` | `POST /auth/login` → 200 con sesión, o 404 si la cédula no está registrada |
 | `routers/chat.py` | `POST /chat` |
 | `routers/conversations.py` | `GET/POST /conversations`, `GET /conversations/{id}/messages` |
 
@@ -228,48 +236,54 @@ rompería la regla de dependencia.
 | Ruta | Rol |
 |---|---|
 | `conftest.py` | Fixtures compartidas. **Ninguna** requiere credencial, red ni base de datos. |
-| `doubles/` | Implementaciones en memoria de cada puerto. No son mocks que cuentan llamadas: respetan las mismas invariantes que la base (cédula única, cascada, `updated_at`), así que un test que pasa aquí es evidencia real. |
-| `services/` | Enrutamiento, grafo completo, auth y chat. |
+| `doubles/` | **El único lugar donde existe lógica falsa.** `FakeChatModel` (responde según la forma del prompt), `HashingEmbedder` (vectores léxicos), retriever y repositorios en memoria. Respetan las mismas invariantes que la base (cédula única, cascada, `updated_at`), así que un test que pasa aquí es evidencia real. |
+| `services/` | Enrutamiento, grafo completo, registro/login, chat, y la identidad en el prompt: incluido un test que garantiza que **la cédula completa nunca llega al LLM**. |
 | `integrations/` | Cargadores, embeddings y ranking. |
 | `api/` | Contrato HTTP, códigos de estado, y que nadie lea la conversación de otro. |
-| `integration/` | **Requieren PostgreSQL vivo.** Se saltan solos si no hay base. Se corren con `pytest -m integration`. |
+| `integration/` | **Requieren PostgreSQL vivo** y corren en `kognia_test`, nunca en la base de desarrollo: se niegan a vaciar cualquier base cuyo nombre no termine en `_test`. Se saltan solos si no hay base. Se corren con `pytest -m integration`. |
 
 ---
 
 ## 5. El flujo de una petición, paso a paso
 
 ```
-POST /auth/identify {"cedula": "1.053.812.345"}
+POST /users {"cedula": "1.053.812.345", "display_name": "Ana"}
   │
-  ├─ auth_service.normalize_cedula  -> "1053812345"
-  ├─ users.find_by_cedula           -> None
-  ├─ users.create                   -> INSERT INTO users
-  ├─ users.create_session           -> INSERT INTO sessions
-  └─ 200 {user_id, session_id, expires_at}
+  ├─ auth_service.register
+  │    ├─ normalize_cedula          -> "1053812345"
+  │    ├─ users.find_by_cedula      -> ya existe? -> 409
+  │    └─ users.create              -> INSERT INTO users
+  └─ 201 {id, cedula, display_name}
+
+POST /auth/login {"cedula": "1053812345"}
+  │
+  ├─ auth_service.login
+  │    ├─ users.find_by_cedula      -> no existe? -> 404 (nunca la crea)
+  │    ├─ users.touch_last_seen
+  │    └─ users.create_session      -> INSERT INTO sessions
+  └─ 200 {user_id, session_id, display_name, expires_at}
 
 POST /chat  header X-Session-Id: <uuid>
   │
   ├─ current_user           valida sesión, vencimiento, revocación
-  ├─ chat_service.send
-  │   ├─ _resolve           obtiene o crea la conversación
-  │   │                     (y verifica que sea del usuario)
+  ├─ chat_service.send(user, ...)
+  │   ├─ _resolve           obtiene o crea la conversación (y verifica que sea del usuario)
   │   ├─ append_message     INSERT mensaje del usuario
-  │   ├─ graph.ainvoke      config {thread_id}
-  │   │   │
+  │   ├─ graph.ainvoke      estado inicial con user = {nombre, cédula ****2345}
+  │   │   │                 config {thread_id}
   │   │   ├─ intake              turn_count += 1
-  │   │   ├─ classify_intent     LLM -> intención (validada contra el catálogo)
-  │   │   ├─ collect_data        ¿faltan campos declarados?
+  │   │   ├─ classify_intent     Gemini -> intención (validada contra el catálogo)
+  │   │   ├─ collect_data        ¿faltan campos declarados? Gemini los extrae como JSON
   │   │   ├─ route               DECISIÓN DETERMINISTA, sin LLM
-  │   │   │    ├─ ANSWER   -> retrieve_context -> respond
-  │   │   │    ├─ COLLECT  -> respond (pregunta por el dato)
-  │   │   │    └─ ESCALATE -> respond (mensaje del YAML)
-  │   │   │
+  │   │   │    ├─ ANSWER   -> retrieve_context (E5 + pgvector) -> respond (Gemini)
+  │   │   │    ├─ COLLECT  -> respond (pregunta por el dato, sin LLM)
+  │   │   │    └─ ESCALATE -> respond (mensaje del YAML, sin LLM)
   │   │   └─ el checkpointer persiste el estado en PostgreSQL
-  │   │
   │   └─ append_message     INSERT respuesta + intent + route + sources
-  │
   └─ 200 TurnResult
 ```
+
+Medido con Gemini y E5 reales: **1-3.5 s por turno**.
 
 ---
 
@@ -290,89 +304,81 @@ No es duplicación por descuido. Son dos preguntas distintas:
 
 | Puerto | Proveedor | Estado |
 |---|---|---|
-| `LLMPort` | NVIDIA NIM (respaldo: Azure/OpenAI) | Implementado |
-| `RetrievalPort` | PostgreSQL + pgvector | Implementado |
+| `LLMPort` | Gemini (`gemini-3.5-flash-lite`) | Implementado |
+| `RetrievalPort` | PostgreSQL + pgvector, embeddings E5 | Implementado |
 | `UserRepositoryPort` | PostgreSQL | Implementado |
 | `ConversationRepositoryPort` | PostgreSQL | Implementado |
 | `VoicePort` | **Sin decidir** — ver AGENTS.md §1.1 | Declarado, sin implementar |
 | `AvatarPort` | **Sin decidir** — ver AGENTS.md §1.2 | Declarado, sin implementar |
 
-La migración de Chroma a pgvector fue la prueba de que los puertos estaban bien
-definidos: se reemplazó el adaptador completo y **ningún nodo del grafo cambió**.
+Los puertos ya se probaron dos veces: se reemplazó Chroma por pgvector y NVIDIA
+por Gemini, y **ningún nodo del grafo cambió de responsabilidad** en ninguno de
+los dos casos. Los ajustes que sí hubo en los nodos (leer `.text`, tolerar JSON
+envuelto en bloques de código) fueron de robustez, no de proveedor.
 
 ---
 
 ## 8. Advertencias importantes
 
-### El LLM gratuito es lento y variable
-
-Un turno que pasa por el RAG cuesta **dos llamadas** al modelo (`classify_intent`
-y `respond`). En el tier gratuito de NVIDIA eso son **9-20 segundos** medidos,
-con bastante varianza. Para un chat de texto es tolerable; **para el agente de
-voz que queremos, no lo es** — habrá que atacarlo antes de esa fase.
-
-Lo que ya se hizo: `NVIDIA_REASONING_EFFORT=low` bajó la mediana por llamada de
-19.4s a 3.3s. Lo que queda por explorar: clasificar la intención localmente (sin
-LLM) para eliminar una de las dos llamadas, o usar
-`nvidia/nemotron-3-super-120b-a12b` (1.1s) con reintentos, tolerando sus 503.
-
-### Al elegir modelo de NVIDIA, no confíes en el catálogo de la librería
-
-`ChatNVIDIA.get_available_models()` devuelve una lista **desactualizada**: enumera
-modelos que ya están en end-of-life y responden `410 Gone`. Nos pasó con
-`meta/llama-3.3-70b-instruct`, que figuraba como disponible y estaba muerto.
-
-La fuente de verdad es la API:
-
-```bash
-curl -H "Authorization: Bearer $NVIDIA_API_KEY" \
-     https://integrate.api.nvidia.com/v1/models
-```
-
-Y aun así, estar en esa lista no garantiza que responda: de 11 candidatos
-probados, 4 dieron timeout y 4 dieron 404. **Hay que probar antes de elegir.**
-
 ### La autenticación no es autenticación
 
 La identificación por cédula **no verifica nada**. Cualquiera que conozca una
-cédula obtiene una sesión válida para esa persona. Fue una decisión consciente
-de alcance para la demo. **No expongas datos sensibles detrás de esto** sin
-agregar antes una verificación de credencial real (contraseña con hash, o un
-proveedor de identidad).
+cédula registrada obtiene una sesión válida para esa persona. Fue una decisión
+consciente de alcance para la demo. **No expongas datos sensibles detrás de
+esto** sin agregar antes una verificación de credencial real.
+
+### Qué le llega al LLM sobre la persona
+
+Solo el **nombre** y los **últimos 4 dígitos** de la cédula. El tier gratuito de
+Gemini puede usar los prompts para mejorar sus productos, y la cédula completa
+es un dato personal (Ley 1581). `tests/services/test_user_context.py` revisa
+todos los prompts —clasificación, extracción y respuesta— y falla si la cédula
+completa aparece en cualquiera.
+
+### Al elegir modelo, el catálogo no prueba nada
+
+Nos pasó con dos proveedores. En NVIDIA, modelos listados como disponibles
+respondían `410 Gone`. En Gemini, los `gemini-2.5-*` aparecen en la lista de
+modelos y responden 404: *"no longer available to new users"*. **Hay que llamar
+al modelo antes de elegirlo**, y verificar por conteo de tokens de
+razonamiento que el control de *thinking* realmente llega a la API.
+
+### Cuota gratuita de Gemini
+
+Tiene límite de peticiones por minuto, y un turno con RAG cuesta dos llamadas.
+Si se agota, la API responde **503 con `Retry-After`**, no un 500. Varios
+jurados probando a la vez podrían toparlo.
 
 ### La dimensión del embedding está clavada en el esquema
 
 `document_chunks.embedding` es `vector(768)`, que corresponde a
 `multilingual-e5-base`. Cambiar de modelo a uno de otra dimensión exige una
-migración nueva y reindexar todo. `E5Embedder` valida esto al arrancar y falla
-con un mensaje claro en vez de dejar que Postgres rechace cada inserción.
+migración nueva y reindexar todo. `E5Embedder` lo valida al arrancar.
 
-### El modelo `fake` no razona
+### Los dobles de prueba no son el producto
 
-Clasifica por solapamiento de palabras y, al responder, cita el contexto
-recuperado. Es una herramienta de diagnóstico: si la respuesta repite el corpus,
-la recuperación funcionó. No es representativo de la calidad real.
-
-### `EMBEDDING_PROVIDER=fake` no es semántico
-
-Es una bolsa de palabras con hashing. Encuentra documentos que comparten
-vocabulario, no que comparten significado. Para calidad real, `local`.
+`FakeChatModel` y `HashingEmbedder` viven solo en `tests/doubles/`. Existen para
+que `pytest` corra en segundos sin red ni cuota. Que la suite pase prueba que el
+cableado es correcto, no la calidad de las respuestas: para eso está el
+recorrido HTTP con modelos reales.
 
 ---
 
 ## 9. Comandos
 
 ```bash
-# Levantar la base
+# Base de datos
 docker compose up -d
-python -m scripts.migrate
+python -m scripts.migrate            # base de desarrollo
+python -m scripts.migrate --test     # base de pruebas (los tests también la migran solos)
+python -m scripts.seed               # usuarios demo + corpus embebido con E5
 
-# Indexar documentos
-python -m scripts.ingest --path docs/faq_demo --reset
+# Reindexar lo que nos entreguen el día del reto
+python -m scripts.ingest --path <carpeta> --reset
 
 # Pruebas
-pytest                  # 55 tests, sin red ni Docker
-pytest -m integration   # 16 tests contra PostgreSQL real
+pytest                  # con dobles: sin red, sin Docker, sin key
+pytest -m integration   # contra PostgreSQL real, en kognia_test
 
 # Servidor  (NO uses uvicorn directamente en Windows, ver 4.4)
 python -m scripts.serve
@@ -386,9 +392,9 @@ python -m scripts.serve --reload --port 8080
 1. **Dominio:** escribir `config/domains/<reto>.yaml` con el catálogo de
    intenciones y el esquema de campos. Apuntar `DOMAIN_CONFIG_PATH` ahí.
 2. **Conocimiento:** `python -m scripts.ingest --path <carpeta> --reset`.
-3. **Modelo:** `MODEL_PROVIDER=nvidia` con la API key en `.env`.
-4. **Embeddings:** `EMBEDDING_PROVIDER=local`.
-5. **Voz/avatar:** implementar el adaptador en `integrations/voice/` o
+3. **Usuarios:** `POST /users` por cada persona de la demo, o ampliar
+   `scripts/seed.py`.
+4. **Voz/avatar:** implementar el adaptador en `integrations/voice/` o
    `integrations/avatar/` — y **solo** ahí.
 
 Borrar `config/domains/faq_demo.yaml` y `docs/faq_demo/` cuando el dominio real

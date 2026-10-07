@@ -1,3 +1,17 @@
+# =============================================================================
+# ESTADO: INCOMPLETO A PROPOSITO -- reescritura pendiente (fase de despliegue).
+#
+# El LLM es Gemini, que se consume como API externa: no necesita un recurso
+# de Azure. Lo que todavia falta para que este Terraform despliegue
+# el sistema actual:
+#   - Azure Database for PostgreSQL Flexible Server, con `azure.extensions`
+#     = VECTOR (sin eso, CREATE EXTENSION vector falla) y sslmode=require.
+#   - Secretos GEMINI_API_KEY y DATABASE_URL en la Container App.
+#   - 2 vCPU / 4 GiB: el modelo E5 no cabe en 1 GiB.
+#   - Dockerfile con torch sin CUDA, config/ y migrations/ incluidos.
+#   - Provider azurerm actualizado (este pide ~> 3.116; el actual es 5.x).
+# =============================================================================
+
 resource "random_id" "suffix" {
   byte_length = 3
 }
@@ -27,31 +41,6 @@ resource "azurerm_container_registry" "this" {
   admin_enabled       = true
 }
 
-# --- Azure OpenAI (el "Modelos para usar" del equipo) ---
-resource "azurerm_cognitive_account" "openai" {
-  name                = "aoai-${local.name}"
-  resource_group_name = azurerm_resource_group.this.name
-  location            = var.location
-  kind                = "OpenAI"
-  sku_name            = var.openai_sku_name
-}
-
-resource "azurerm_cognitive_deployment" "agent_model" {
-  name                 = var.openai_model_name
-  cognitive_account_id = azurerm_cognitive_account.openai.id
-
-  model {
-    format  = "OpenAI"
-    name    = var.openai_model_name
-    version = var.openai_model_version
-  }
-
-  sku {
-    name     = "Standard"
-    capacity = 10
-  }
-}
-
 # --- Azure Container Apps (donde corre el FastAPI + LangGraph) ---
 resource "azurerm_container_app_environment" "this" {
   name                       = "cae-${local.name}"
@@ -65,11 +54,6 @@ resource "azurerm_container_app" "agent" {
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = azurerm_resource_group.this.name
   revision_mode                = "Single"
-
-  secret {
-    name  = "azure-openai-key"
-    value = azurerm_cognitive_account.openai.primary_access_key
-  }
 
   secret {
     name  = "acr-password"
@@ -91,23 +75,8 @@ resource "azurerm_container_app" "agent" {
       image  = var.container_image
       cpu    = 0.5
       memory = "1Gi"
-
-      env {
-        name  = "MODEL_PROVIDER"
-        value = "azure"
-      }
-      env {
-        name  = "AZURE_OPENAI_ENDPOINT"
-        value = azurerm_cognitive_account.openai.endpoint
-      }
-      env {
-        name  = "AZURE_OPENAI_DEPLOYMENT"
-        value = azurerm_cognitive_deployment.agent_model.name
-      }
-      env {
-        name        = "AZURE_OPENAI_API_KEY"
-        secret_name = "azure-openai-key"
-      }
+      # Pendiente (ver encabezado): GEMINI_API_KEY y DATABASE_URL como
+      # secretos, y el tamano que necesita E5.
     }
   }
 

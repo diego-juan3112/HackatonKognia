@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.exceptions import ModelRateLimitError
+from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.checkpoint.memory import MemorySaver
 
 from api.dependencies import Container
 from api.main import app
-from integrations.llm.fake_llm import FakeChatModel
+from tests.doubles.fake_llm import FakeChatModel
 from models.retrieval import Document
 from services.auth_service import AuthService
 from services.chat_service import ChatService
@@ -76,10 +78,14 @@ def client(container, monkeypatch):
         yield test_client
 
 
+def _register_and_login(client, cedula: str, name: str) -> str:
+    assert client.post("/users", json={"cedula": cedula, "display_name": name}).status_code == 201
+    return client.post("/auth/login", json={"cedula": cedula}).json()["session_id"]
+
+
 @pytest.fixture
 def session_id(client) -> str:
-    body = client.post("/auth/identify", json={"cedula": "1053812345"}).json()
-    return body["session_id"]
+    return _register_and_login(client, "1053812345", "Ana")
 
 
 def test_importing_the_app_needs_no_database():
@@ -91,7 +97,8 @@ def test_health_reports_what_is_wired(client):
     body = client.get("/health").json()
 
     assert body["status"] == "ok"
-    assert body["model_provider"] == "fake"
+    assert body["llm_model"].startswith("gemini")
+    assert body["embedding_model"] == "intfloat/multilingual-e5-base"
     assert body["domain"] == "faq_demo"
     assert body["indexed_chunks"] >= 1
     # The password must never appear in an operational endpoint.
@@ -101,16 +108,46 @@ def test_health_reports_what_is_wired(client):
 # --- auth ------------------------------------------------------------------
 
 
-def test_identify_returns_a_session(client):
-    body = client.post("/auth/identify", json={"cedula": "1.053.812.345"}).json()
+def test_create_user_returns_201_with_the_normalised_cedula(client):
+    response = client.post("/users", json={"cedula": "1.053.812.345", "display_name": "Ana"})
 
-    assert body["cedula"] == "1053812345", "debe normalizar la cedula"
+    assert response.status_code == 201
+    assert response.json()["cedula"] == "1053812345"
+    assert response.json()["display_name"] == "Ana"
+
+
+def test_creating_the_same_user_twice_is_a_conflict(client):
+    client.post("/users", json={"cedula": "1053812345", "display_name": "Ana"})
+    again = client.post("/users", json={"cedula": "1.053.812.345", "display_name": "Ana"})
+    assert again.status_code == 409
+
+
+def test_create_user_requires_a_name(client):
+    assert client.post("/users", json={"cedula": "1053812345"}).status_code == 422
+
+
+def test_login_of_an_unregistered_cedula_is_404_and_creates_nothing(client):
+    assert client.post("/auth/login", json={"cedula": "9999999999"}).status_code == 404
+    # ...and it did not quietly sign them up either:
+    assert client.post("/auth/login", json={"cedula": "9999999999"}).status_code == 404
+
+
+def test_login_returns_a_session_for_a_registered_user(client):
+    client.post("/users", json={"cedula": "1053812345", "display_name": "Ana"})
+    body = client.post("/auth/login", json={"cedula": "1.053.812.345"}).json()
+
+    assert body["cedula"] == "1053812345"
+    assert body["display_name"] == "Ana"
     assert body["session_id"]
-    assert body["user_id"]
 
 
 def test_malformed_cedula_is_rejected(client):
-    assert client.post("/auth/identify", json={"cedula": "abc"}).status_code == 422
+    assert client.post("/auth/login", json={"cedula": "abc"}).status_code == 422
+    assert client.post("/users", json={"cedula": "abc", "display_name": "X"}).status_code == 422
+
+
+def test_the_old_identify_endpoint_is_gone(client):
+    assert client.post("/auth/identify", json={"cedula": "1053812345"}).status_code == 404
 
 
 def test_chat_without_session_header_is_rejected(client):
@@ -182,10 +219,73 @@ def test_cannot_read_another_users_conversation(client, session_id):
         "/chat", json={"message": "hola"}, headers={"X-Session-Id": session_id}
     ).json()
 
-    other = client.post("/auth/identify", json={"cedula": "9998887777"}).json()
+    other_session = _register_and_login(client, "9998887777", "Beto")
     response = client.get(
         f"/conversations/{turn['conversation_id']}/messages",
-        headers={"X-Session-Id": other["session_id"]},
+        headers={"X-Session-Id": other_session},
     )
 
     assert response.status_code == 403
+
+
+# --- model failures ----------------------------------------------------------
+
+
+class _RateLimitedModel(BaseChatModel):
+    """Behaves like Gemini when the free-tier quota runs out."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "rate-limited"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise ModelRateLimitError("429 RESOURCE_EXHAUSTED")
+
+
+def test_rate_limited_model_is_a_503_not_a_500(client, container, session_id):
+    container.chat = ChatService(
+        graph=build_graph(
+            llm=_RateLimitedModel(),
+            retriever=container.retriever,
+            domain=container.domain,
+            checkpointer=MemorySaver(),
+        ),
+        conversations=container.conversations,
+        domain=container.domain,
+    )
+
+    response = client.post(
+        "/chat", json={"message": "hola"}, headers={"X-Session-Id": session_id}
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"]
+    assert "limite" in response.json()["detail"]
+
+
+# --- /docs contract --------------------------------------------------------
+
+
+def test_every_error_the_routes_raise_is_documented(client):
+    """An undeclared status shows up in Swagger as "Undocumented"."""
+    paths = client.get("/openapi.json").json()["paths"]
+
+    def codes(path: str, method: str) -> set[str]:
+        return set(paths[path][method]["responses"])
+
+    assert {"201", "409"} <= codes("/users", "post")
+    assert {"200", "404"} <= codes("/auth/login", "post")
+    assert {"200", "401", "403", "404", "502", "503"} <= codes("/chat", "post")
+    assert {"200", "401"} <= codes("/conversations", "get")
+    assert {"200", "401", "403", "404"} <= codes("/conversations/{conversation_id}/messages", "get")
+
+
+def test_the_default_chat_example_works_as_is(client, session_id):
+    """Regression: Swagger used to pre-fill a made-up conversation_id -> 404."""
+    body = client.get("/openapi.json").json()["paths"]["/chat"]["post"]["requestBody"]
+    examples = body["content"]["application/json"]["examples"]
+    default = next(iter(examples.values()))["value"]
+
+    assert "conversation_id" not in default
+    response = client.post("/chat", json=default, headers={"X-Session-Id": session_id})
+    assert response.status_code == 200

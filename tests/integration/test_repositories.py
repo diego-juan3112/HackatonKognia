@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import psycopg
 import pytest
+
+from models.auth import UserAlreadyExists
 
 pytestmark = pytest.mark.integration
 
@@ -31,7 +32,7 @@ async def test_duplicate_cedula_is_rejected_by_the_database(users):
     """The UNIQUE constraint is what stops one person becoming two rows."""
     await users.create("1053812345")
 
-    with pytest.raises(psycopg.errors.UniqueViolation):
+    with pytest.raises(UserAlreadyExists):
         await users.create("1053812345")
 
 

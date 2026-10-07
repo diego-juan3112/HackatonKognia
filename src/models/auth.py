@@ -74,3 +74,11 @@ class MessageRecord(BaseModel):
     route: str | None = None
     sources: list[str] = Field(default_factory=list)
     created_at: datetime
+
+
+class UserAlreadyExists(Exception):
+    """A user with that cedula is already registered.
+
+    Declared here rather than raised as a database error so that services/ and
+    api/ can react to it without knowing that PostgreSQL exists.
+    """

@@ -31,7 +31,7 @@ Reply with the intent name only, nothing else. If none fits, reply exactly:
 def _last_user_text(state: ConversationState) -> str:
     for message in reversed(state.get("messages", [])):
         if isinstance(message, HumanMessage):
-            return str(message.content)
+            return message.text
     return ""
 
 
@@ -59,7 +59,7 @@ def make_classify_intent(
         response = await llm.ainvoke(
             [SystemMessage(content=system), HumanMessage(content=text)]
         )
-        raw = str(response.content).strip().lower()
+        raw = response.text.strip().lower()
 
         # Never trust the model to return a name verbatim: match it against the
         # catalogue and fall back rather than propagating an invented intent.

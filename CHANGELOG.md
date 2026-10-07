@@ -5,6 +5,103 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-29
+
+### Added
+- **`API.md`**: guía de los endpoints para el frontend. Explica en qué orden
+  llamarlos, qué significa cada campo de la respuesta (incluido `route`) y qué
+  hacer con cada código de error.
+- **Swagger documenta todos los errores.** `src/api/errors.py` declara, ruta
+  por ruta, los 401/403/404/409/502/503 que antes aparecían en `/docs` como
+  *Undocumented*. `/docs` abre con el flujo mínimo (crear usuario, login, chat).
+  Dos tests lo protegen.
+
+### Fixed
+- **El ejemplo de `POST /chat` en Swagger daba 404 al ejecutarlo tal cual.**
+  Swagger rellenaba `conversation_id` con un UUID inventado. Ahora el ejemplo
+  por defecto no lo trae, y un segundo ejemplo muestra cómo continuar una
+  conversación.
+- `src/api/main.py` reportaba la versión 0.3.0 y documentaba un comando de
+  arranque (`uvicorn` directo) que falla en Windows.
+
+### Removed
+- `src/integrations/tools/` (calculadora y búsqueda web con Tavily): nada lo
+  usaba, y estaba roto porque leía `tavily_api_key`, que ya no existe en la
+  configuración.
+- El directorio `.chroma/` y su línea en `.gitignore`, restos de Chroma, y el
+  comentario de Tavily en `requirements.txt`.
+- 41 paquetes del entorno virtual que ningún requisito de `requirements.txt`
+  necesita (`chromadb` y sus dependencias, `tiktoken`, `jiter`, `aiohttp`,
+  entre otros). Ninguna prueba cambió: 71 offline y 19 de integración en verde,
+  y un turno real con Gemini respondiendo.
+
+## [0.4.0] - 2026-09-28
+
+### Changed
+- **LLM: NVIDIA sale, entra Gemini** (`gemini-3.5-flash-lite`, `thinking_level=minimal`).
+  Elegido midiendo a través de nuestro propio factory, con las tres formas de
+  prompt del grafo: ~1 s por llamada y 15/15 correctas. Con NVIDIA un turno
+  costaba 9-20 s; con Gemini, 1-3.5 s. Los `gemini-2.5-*` aparecen en la lista
+  de modelos pero responden 404 para keys nuevas; `gemini-3.8-flash` fue más
+  lento (8.5 s) y se topó con límites de cuota.
+- **Se eliminan NVIDIA, OpenAI y Azure OpenAI** del código, la configuración y
+  el Terraform. El factory ya no tiene proveedores de respaldo.
+- **Stack migrado a la línea 1.x**: `langchain-core` 1.6, `langgraph` 1.2,
+  `langchain-text-splitters` 1.1, `langchain-google-genai` 4.4. La integración
+  actual de Gemini lo exige. La migración sola no rompió ningún test.
+- **La lógica `fake` sale del producto.** La app siempre usa Gemini y E5 reales.
+  `FakeChatModel` y `HashingEmbedder` se mudan a `tests/doubles/`, único lugar
+  donde existen; `MODEL_PROVIDER` y `EMBEDDING_PROVIDER` desaparecen.
+- **`/auth/identify` se reemplaza por `POST /users` y `POST /auth/login`.**
+  Crear un usuario (409 si ya existe) e iniciar sesión (404 si no está
+  registrado) son operaciones separadas: el login ya no da de alta a nadie.
+- `respond` envía los últimos turnos de **ambos** lados de la conversación.
+  Antes solo enviaba los del usuario: un modelo real veía a alguien hablando
+  solo, sin saber qué había respondido ya.
+- `config.py` ya no contiene contraseñas en sus valores por defecto (AGENTS.md §8).
+
+### Added
+- **El agente sabe con quién habla.** `chat_service` inyecta en el estado del
+  grafo el nombre y los últimos 4 dígitos de la cédula; `respond` los usa. La
+  cédula completa **nunca** llega al LLM, y un test lo garantiza revisando
+  todos los prompts.
+- **Base de pruebas separada (`kognia_test`)**, creada y migrada
+  automáticamente. Los tests de integración se niegan a vaciar cualquier base
+  cuyo nombre no termine en `_test`.
+- `scripts/seed.py`: 2 usuarios demo y el corpus embebido con E5. Idempotente.
+- La app **se niega a arrancar** si hay migraciones pendientes, con el comando
+  exacto para resolverlo.
+- Cuota de Gemini agotada → **503 con `Retry-After`**; otro fallo del modelo →
+  502. Se capturan las excepciones genéricas de `langchain-core`, no las de
+  Google, así que la API no sabe qué proveedor hay detrás.
+- `src/integrations/db/migrations.py`: la lógica de migraciones, compartida por
+  el CLI (`scripts/migrate.py`, ahora con `--test`), los tests y el arranque.
+
+### Fixed
+- **El footgun de los tests.** `pytest -m integration` vaciaba la base de
+  desarrollo con `TRUNCATE ... CASCADE`: borró el corpus tres veces y una vez a
+  los usuarios. Verificado: los conteos de desarrollo ya no cambian al correrlos.
+  Efecto colateral: dejan de generarse checkpoints huérfanos por esa vía.
+- Los nodos leían `str(response.content)`. En `langchain-core` 1.x una
+  respuesta puede ser una lista de bloques, y `str()` de esa lista no es la
+  respuesta: ahora se usa `.text`.
+- `collect_data` tolera JSON envuelto en bloques de código markdown, que Gemini
+  suele agregar. Sin esto, un dato bien extraído se leía como "no encontrado" y
+  el agente lo volvía a pedir.
+- `E5Embedder` carga primero desde la caché local. Antes consultaba a Hugging
+  Face en cada arranque, incluso con el modelo ya descargado.
+- Se usa `get_embedding_dimension` (renombrado en sentence-transformers 6.x),
+  con respaldo para versiones anteriores.
+
+### Verificado con modelos reales
+- 69 tests offline y 19 de integración en verde.
+- Por HTTP: crear usuario (201) y duplicado (409); login de cédula no
+  registrada (404) y de usuario sembrado (200); la pregunta "¿a qué hora puedo
+  ir el fin de semana?" —sin palabras en común con el documento, que dice
+  "sábados"— respondida correctamente y por su nombre; seguimiento de la
+  conversación; extracción real del radicado como JSON; las ramas de
+  recolección y escalamiento; y el historial sobrevive a reiniciar el servidor.
+
 ## [0.3.0] - 2026-09-22
 
 ### Changed

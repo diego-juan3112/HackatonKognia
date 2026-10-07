@@ -1,4 +1,8 @@
-"""A deterministic chat model for offline development, tests and demos.
+"""Test double for LLMPort: a deterministic chat model.
+
+Lives in tests/ on purpose. The product always talks to Gemini; this exists only
+so the suite can exercise the whole graph with no network, no key and no quota
+(AGENTS.md sections 5 and 11).
 
 It is not a mock that returns one canned string: it reads the prompt the node
 sent and answers in the shape that node expects. That makes the whole graph

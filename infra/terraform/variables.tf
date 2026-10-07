@@ -5,25 +5,9 @@ variable "project_name" {
 }
 
 variable "location" {
-  description = "Región de Azure. Revisa que tenga cupo/soporte para el modelo elegido."
+  description = "Región de Azure. Desde Colombia, eastus2 suele dar buena latencia y precio."
   type        = string
-  default     = "swedencentral"
-}
-
-variable "openai_model_name" {
-  description = "Modelo a desplegar en Azure OpenAI (gpt-4o-mini recomendado para el hackathon: barato y rápido)"
-  type        = string
-  default     = "gpt-4o-mini"
-}
-
-variable "openai_model_version" {
-  type    = string
-  default = "2024-07-18"
-}
-
-variable "openai_sku_name" {
-  type    = string
-  default = "S0"
+  default     = "eastus2"
 }
 
 variable "container_image" {

@@ -1,42 +1,26 @@
 """Embedding functions for the retriever.
 
 Kept as an internal detail of the retrieval adapter rather than promoted to a
-port: AGENTS.md section 5 lists four ports and adding a fifth for something
-nobody above ``integrations/`` ever sees would be noise.
+port: nobody above ``integrations/`` ever sees an embedder.
 
 The interface is deliberately asymmetric (``embed_documents`` vs
 ``embed_query``). Modern retrieval models encode a question and a passage
 differently, and E5 in particular requires literal ``query:`` / ``passage:``
 prefixes -- forgetting them costs a noticeable chunk of retrieval quality. That
 detail is handled inside the adapter so no caller has to remember it.
+
+The hashing embedder used by the test suite lives in tests/doubles/, not here:
+the product always embeds with E5.
 """
 
 from __future__ import annotations
 
-import hashlib
-import math
-import re
 from collections.abc import Sequence
 from typing import Protocol
 
 from config import EMBEDDING_DIMENSIONS
 
-_TOKEN = re.compile(r"\w+", re.UNICODE)
-
-# Without this, function words dominate every vector and retrieval ranks by
-# "which document says 'de' most often". Measured effect: the query "cual es el
-# horario de atencion" returned solicitudes.md ahead of horarios.md.
-_STOPWORDS = frozenset(
-    """
-    a al algo algun alguna alguno ante antes aqui asi aun cada como con contra
-    cual cuales cuando de del desde donde dos el ella ellas ello ellos en entre
-    era eran es esa esas ese eso esos esta estan estas este esto estos fue
-    fueron ha han hasta hay la las le les lo los mas me mi mis mucho muy no nos
-    nuestra nuestro o os otra otro para pero poco por porque que quien quienes
-    se sea segun ser si sin sobre son su sus tambien tanto te tiene tienen
-    todo todos tu tus un una uno unos y ya yo
-    """.split()
-)
+DEFAULT_MODEL = "intfloat/multilingual-e5-base"
 
 
 class Embedder(Protocol):
@@ -47,77 +31,40 @@ class Embedder(Protocol):
     def embed_query(self, text: str) -> list[float]: ...
 
 
-def _tokenize(text: str) -> list[str]:
-    return [
-        t
-        for t in (token.lower() for token in _TOKEN.findall(text))
-        if len(t) > 2 and t not in _STOPWORDS
-    ]
+def _load_cache_first(model_name: str):
+    """Load from the local cache without touching the network, else download.
 
-
-class HashingEmbedder:
-    """Deterministic, offline, dependency-free.
-
-    Uses the hashing trick: every token maps to a dimension by a stable hash,
-    counts accumulate, and the vector is L2-normalised so cosine behaves.
-
-    Not semantic -- it only knows which words two texts share. Its job is to
-    let the pipeline run in tests and offline, not to retrieve well.
+    Without this, sentence-transformers contacts Hugging Face on *every* load
+    to check for updates, even with the model already cached -- which fails or
+    stalls on a bad connection. The environment variable that disables that
+    (HF_HUB_OFFLINE) cannot be set from .env, because pydantic-settings does
+    not export .env values to the process environment. Trying the cache first
+    gets the same result with nothing to configure.
     """
+    from sentence_transformers import SentenceTransformer
 
-    def __init__(self, dimensions: int = EMBEDDING_DIMENSIONS) -> None:
-        self.dimensions = dimensions
-
-    def _vector(self, text: str) -> list[float]:
-        counts: dict[int, float] = {}
-        for token in _tokenize(text):
-            # Python's hash() is salted per process; use a stable digest.
-            bucket = (
-                int.from_bytes(hashlib.md5(token.encode("utf-8")).digest()[:4], "little")
-                % self.dimensions
-            )
-            counts[bucket] = counts.get(bucket, 0.0) + 1.0
-
-        vector = [0.0] * self.dimensions
-        for bucket, count in counts.items():
-            # Sublinear term frequency: a word repeated ten times is not ten
-            # times more informative than one seen once.
-            vector[bucket] = 1.0 + math.log(count)
-
-        norm = math.sqrt(sum(v * v for v in vector))
-        if norm < 1e-12:
-            # An empty or all-stopword text: return a valid unit vector so the
-            # database never receives a zero vector.
-            vector[0] = 1.0
-            return vector
-        return [v / norm for v in vector]
-
-    # Symmetric: there is no query/passage distinction to make here.
-    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        return [self._vector(t) for t in texts]
-
-    def embed_query(self, text: str) -> list[float]:
-        return self._vector(text)
+    try:
+        return SentenceTransformer(model_name, local_files_only=True)
+    except Exception:  # noqa: BLE001 - not cached yet: the one time we need the network
+        return SentenceTransformer(model_name)
 
 
 class E5Embedder:
-    """intfloat/multilingual-e5-base, running locally on CPU.
+    """intfloat/multilingual-e5-base, running locally on CPU. No API key.
 
     Chosen over the English-only models (all-MiniLM, bge-base-en, msmarco...)
     because our corpus and our users are in Spanish; an English-only model
-    fails silently, returning results that are simply wrong.
+    fails silently, returning results that are simply wrong. Measured on the
+    faq_demo corpus with questions that share no words with the documents:
+    3/3 correct, against 1/3 for a lexical embedder.
 
-    Downloads ~1.1 GB from Hugging Face the first time and caches it. That
-    first run needs network; every run after works offline.
+    Downloads ~1.1 GB the first time; afterwards loads from cache in ~10 s.
     """
 
-    def __init__(self, model_name: str = "intfloat/multilingual-e5-base") -> None:
-        from sentence_transformers import SentenceTransformer
-
-        self._model = SentenceTransformer(model_name)
-        # sentence-transformers 6.x renamed this method; the old name still
-        # works but warns and will be removed. The fallback keeps the 3.x-5.x
-        # range that requirements.txt allows.
+    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
+        self._model = _load_cache_first(model_name)
+        # sentence-transformers 6.x renamed this method; the fallback keeps the
+        # 3.x-5.x range that requirements.txt allows.
         get_dim = getattr(self._model, "get_embedding_dimension", None) or getattr(
             self._model, "get_sentence_embedding_dimension"
         )
@@ -146,10 +93,6 @@ class E5Embedder:
         return self._encode([f"query: {text}"])[0]
 
 
-def build_embedder(provider: str, model: str = "") -> Embedder:
-    """Select the embedder declared in settings."""
-    if provider == "fake":
-        return HashingEmbedder()
-    if provider == "local":
-        return E5Embedder(model or "intfloat/multilingual-e5-base")
-    raise ValueError(f"EMBEDDING_PROVIDER desconocido: {provider!r}")
+def build_embedder(model: str = DEFAULT_MODEL) -> Embedder:
+    """Build the product embedder."""
+    return E5Embedder(model or DEFAULT_MODEL)

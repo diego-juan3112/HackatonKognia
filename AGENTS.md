@@ -24,7 +24,7 @@ de PQR o de finanzas, está fuera de alcance para esta fase.
 |---|---|---|
 | Orquestación de agente | LangGraph (grafo con estado, checkpointer) | Fijo |
 | API | FastAPI | Fijo |
-| LLM | **NVIDIA NIM** (tier gratuito); Azure/OpenAI como respaldo | Fijo |
+| LLM | **Gemini** (`gemini-3.5-flash-lite`, Google AI Studio) | **Decidido** |
 | **Voz (STT/TTS)** | **PENDIENTE DE DECISIÓN** — ver §1.1 | Abierto |
 | **Avatar 3D** | **PENDIENTE DE DECISIÓN** — ver §1.2 | Abierto |
 | **RAG / base de conocimiento** | PostgreSQL + pgvector — ver §6 | **Decidido** |
@@ -47,7 +47,7 @@ tomada; ver §1.3). Candidatos vivos:
 |---|---|---|
 | Cartesia | Latencia de TTS muy baja, voces clonables | Costo y cupo del plan gratuito sin verificar |
 | Deepgram | STT fuerte, API simple, tier gratuito generoso | TTS menos maduro que el STT |
-| OpenAI Realtime | Speech-to-speech en una sola conexión, ya usamos OpenAI | Costo por minuto; nos ata más a un proveedor |
+| OpenAI Realtime | Speech-to-speech en una sola conexión | Costo por minuto; agregaría un segundo proveedor de IA además de Gemini |
 | Azure AI Speech (estándar) | Encaja con el despliegue en Azure, precio por carácter | STT+TTS por separado: nosotros orquestamos la latencia |
 
 Criterios de decisión, en orden: costo para la duración del reto, latencia
@@ -75,14 +75,16 @@ palabra, el lip-sync es casi gratis; si no, hay que derivarlo del audio.
   pgvector:pg17`) en el puerto 5433. Chroma queda descartado: un chat agéntico
   necesita datos relacionales junto a los vectores, y dos almacenes son dos
   almacenes que sincronizar.
-- **LLM: NVIDIA NIM** (gratuito, `build.nvidia.com`), modelo
-  `openai/gpt-oss-20b` con `NVIDIA_REASONING_EFFORT=low`. Elegido midiendo
-  contra la API real, no por reputacion: ver CHANGELOG 0.3.0. Se accede con
-  `ChatOpenAI` apuntando a `integrate.api.nvidia.com` porque
-  `langchain-nvidia-ai-endpoints` descarta `reasoning_effort`, que vale un
-  6x de latencia. Azure y OpenAI siguen en el factory como respaldo de pago.
-  **Al cambiar de modelo, no confies en el catalogo de la libreria**: lista
-  modelos muertos. Pregunta a `GET /v1/models` y prueba antes de elegir.
+- **LLM: Gemini**, modelo `gemini-3.5-flash-lite` con `thinking_level=minimal`.
+  Elegido midiendo a traves de nuestro propio factory, no por reputacion:
+  ~1 s por llamada y 15/15 correctas en las tres formas de prompt del grafo.
+  NVIDIA quedo descartado (9-20 s por turno) y con el salen OpenAI y Azure
+  OpenAI: el factory ya no tiene proveedores de respaldo. Ver CHANGELOG 0.4.0.
+  **Al cambiar de modelo, el catalogo no prueba nada**: los `gemini-2.5-*`
+  aparecen listados y responden 404 para keys nuevas. Llama al modelo antes de
+  elegirlo, y verifica por conteo de tokens que el control de thinking llega.
+- **Stack LangChain/LangGraph en la linea 1.x** (`langchain-core` 1.6,
+  `langgraph` 1.2). La integracion actual de Gemini lo exige.
 - **Embeddings: `intfloat/multilingual-e5-base`**, corriendo local. Los modelos
   en inglés (all-MiniLM, bge-base-en, msmarco, e5-base) quedan descartados
   porque nuestro corpus es en español y fallarían de forma silenciosa. LaBSE
@@ -100,7 +102,7 @@ services/      # Lógica de negocio: el grafo de LangGraph, orquestación,
 integrations/  # Clientes concretos de servicios externos.
                #   db/         repositorios y pool de PostgreSQL
                #   retrieval/  pgvector, embeddings, cargadores
-               #   llm/        factory de proveedores (NVIDIA, Azure, OpenAI)
+               #   llm/        factory del LLM (Gemini)
                #   voice/      VACÍO a propósito (§8)
                #   avatar/     VACÍO a propósito (§8)
 models/        # Esquemas Pydantic — request/response de la API, estado
@@ -159,7 +161,7 @@ contrato es lo que nos permite avanzar hoy y enchufar el proveedor después.
 
 | Puerto | Responsabilidad | Proveedor |
 |---|---|---|
-| `LLMPort` | Chat model | Decidido (Azure OpenAI / OpenAI) |
+| `LLMPort` | Chat model | Gemini |
 | `VoicePort` | STT y TTS: audio del usuario → texto, texto → audio | **Por decidir** (§1.1) |
 | `AvatarPort` | Renderizado 3D + lip-sync sincronizado con el audio | **Por decidir** (§1.2) |
 | `RetrievalPort` | Ingesta y recuperación de conocimiento (RAG) | PostgreSQL + pgvector |
@@ -239,6 +241,7 @@ Decisión registrada conforme a §8. Instalados y en uso:
 | Plugin | `frontend-design` | Panel Astro y avatar |
 | Plugin | `security-guidance` | Hooks en segundo plano |
 | Plugin | `playwright` | Pruebas de navegador |
+| Skill | `archify` (tt-a1i, MIT, v3.0.1) | Diagramas HTML validados contra el código. Instalada a nivel de usuario (`~/.claude/skills/archify`), no en el repo. Revisada: sin dependencias npm; su única llamada de red es un chequeo de versión, que se apaga con `ARCHIFY_UPDATE_CHECK_DISABLED=1`. Los diagramas viven fuera del repo, en `../HackatonKognia-docs/` |
 
 ## 10. Flujo de trabajo
 1. **Explore → Plan → Code → Commit.** Toda tarea no trivial empieza en
@@ -256,11 +259,17 @@ Decisión registrada conforme a §8. Instalados y en uso:
   externa real — nunca golpear el servicio real en la suite por defecto.
 - Cada puerto de §5 tiene un doble en memoria; la suite completa debe correr
   sin credenciales, sin red, sin micrófono y sin GPU.
-- La suite por defecto corre con dobles en memoria (`tests/doubles/`): sin
-  Docker, sin red, sin credenciales. Los tests contra PostgreSQL real viven en
-  `tests/integration/`, están marcados `integration` y se saltan solos si no hay
-  base accesible.
-- Comandos: `pytest` (offline) y `pytest -m integration` (contra la base).
+- Los dobles (`FakeChatModel`, `HashingEmbedder`, repositorios y retriever en
+  memoria) viven **solo** en `tests/doubles/`. El producto nunca los usa: la app
+  siempre corre con Gemini y E5 reales.
+- La suite por defecto corre con esos dobles: sin Docker, sin red, sin
+  credenciales. Los tests contra PostgreSQL real viven en `tests/integration/`,
+  están marcados `integration` y se saltan solos si no hay base accesible.
+- **Los tests de integración nunca tocan la base de desarrollo.** Corren contra
+  `TEST_DATABASE_URL` (`kognia_test`), que se crea y migra sola, y se niegan a
+  ejecutarse si el nombre de la base no termina en `_test`. Los datos del seed
+  (`python -m scripts.seed`) quedan intactos.
+- Comandos: `pytest` (offline) y `pytest -m integration` (contra `kognia_test`).
 - Sin definir todavía: umbral mínimo de cobertura exigido antes de un merge.
 
 ## 12. CI/CD (propuesta — confirmar antes de tratarla como fija)

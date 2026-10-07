@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from config import EMBEDDING_DIMENSIONS
-from integrations.retrieval.embeddings import HashingEmbedder
+from tests.doubles.hashing_embedder import HashingEmbedder
 from integrations.retrieval.loaders import load_directory, load_file
 from models.retrieval import Document
 from tests.doubles import InMemoryRetriever
