@@ -1,7 +1,7 @@
 # integrations/voice — vacío a propósito
 
-No hay adaptador aquí y **no debe haberlo todavía**. AGENTS.md §8 prohíbe
-implementar un proveedor concreto de voz mientras §1.1 siga abierto.
+No hay adaptador aquí y **no debe haberlo todavía**. La regla R-08 prohíbe
+implementar un proveedor concreto de voz mientras siga sin decidir.
 
 El contrato ya existe: `VoicePort` en `src/models/ports.py`.
 
@@ -15,7 +15,7 @@ El contrato ya existe: `VoicePort` en `src/models/ports.py`.
 4. No tocar `services/` ni `api/routers/`. Si hiciera falta, el puerto está
    mal definido y se corrige el puerto.
 
-Candidatos en evaluación y criterios: AGENTS.md §1.1.
+Candidatos en evaluación y criterios: [docs/00-contexto-y-decisiones.md](../../../docs/00-contexto-y-decisiones.md) §3.
 
 ## Material de referencia
 

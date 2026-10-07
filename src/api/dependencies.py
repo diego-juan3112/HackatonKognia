@@ -6,7 +6,7 @@ and no model download -- which is what lets the test suite import it freely.
 
 This is also the only file in ``api/`` allowed to name ``integrations``: it
 wires the object graph. Request handlers receive the assembled container, so
-the layer rule of AGENTS.md section 2 still holds at call time.
+the layer rule R-01 still holds at call time.
 """
 
 from __future__ import annotations

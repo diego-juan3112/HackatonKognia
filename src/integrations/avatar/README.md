@@ -1,7 +1,7 @@
 # integrations/avatar — vacío a propósito
 
-No hay adaptador aquí y **no debe haberlo todavía**. AGENTS.md §8 prohíbe
-implementar un proveedor concreto de avatar mientras §1.2 siga abierto.
+No hay adaptador aquí y **no debe haberlo todavía**. La regla R-08 prohíbe
+implementar un proveedor concreto de avatar mientras siga sin decidir.
 
 El contrato ya existe: `AvatarPort` en `src/models/ports.py`.
 
@@ -14,7 +14,7 @@ frontend necesita para conectarse.
 
 ## Dependencia cruzada a resolver antes de implementar
 
-El lip-sync depende del proveedor de voz (§1.1):
+El lip-sync depende del proveedor de voz ([docs/00](../../../docs/00-contexto-y-decisiones.md) §3):
 
 - Si el proveedor de TTS emite visemas o timestamps por palabra, `visemes_for`
   simplemente los traduce.

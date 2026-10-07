@@ -4,7 +4,7 @@ The node knows there *is* a catalogue; it never knows what is in it. The list
 of intents comes from the DomainSpec, so switching business domain is a
 configuration change.
 
-Note the boundary set by AGENTS.md section 8: the LLM fills in ``intent``,
+Note the boundary set by rule R-04: the LLM fills in ``intent``,
 which is data. It does not choose the next node -- that is the route node plus
 a pure edge function.
 """

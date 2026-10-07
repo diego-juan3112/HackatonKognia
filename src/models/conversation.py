@@ -1,7 +1,7 @@
 """Data shapes for a conversation turn, including voice and avatar payloads.
 
 The voice and avatar types exist even though no provider is chosen yet (see
-AGENTS.md sections 1.1 and 1.2). They are deliberately provider-neutral: the
+docs/00-contexto-y-decisiones.md sections 3 and 4). They are deliberately provider-neutral: the
 day a provider is picked, its adapter translates into these types and nothing
 above ``integrations/`` changes.
 """

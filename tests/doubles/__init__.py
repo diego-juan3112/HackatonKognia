@@ -1,6 +1,6 @@
 """In-memory stand-ins for every port that touches the outside world.
 
-AGENTS.md section 5 requires each port to have one, and section 11 requires the
+Rule R-09 requires each port to have one, and R-16 requires the
 default suite to run with no credentials, no network and no database. These are
 what make both true: `services/` gets exercised for real, PostgreSQL never
 enters the picture.

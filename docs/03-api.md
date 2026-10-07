@@ -33,7 +33,7 @@ POST /chat           mismo header + conversation_id guardado
 - **Tiempos:** un turno de chat tarda 1 a 3.5 s, porque llama a Gemini. Muestra
   un indicador de "escribiendo".
 - **No es autenticación real:** cualquiera que conozca una cédula registrada
-  puede iniciar sesión con ella. No hay contraseña (ARCHITECTURE.md §8).
+  puede iniciar sesión con ella. No hay contraseña (D-06, [01-arquitectura.md](01-arquitectura.md) §8).
 
 ## Endpoints
 
@@ -162,4 +162,4 @@ lista y no un texto.
   y esa decisión aún no está tomada.
 - **Tipos para TypeScript:** se pueden generar desde `/openapi.json` con
   herramientas como `openapi-typescript`, en vez de escribirlos a mano. Agregar
-  esa dependencia al frontend es una decisión aparte (AGENTS.md §1).
+  esa dependencia al frontend es una decisión aparte (R-10).

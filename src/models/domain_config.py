@@ -1,6 +1,6 @@
 """The declarative description of a business domain.
 
-This is the seam that keeps AGENTS.md section 3 honest. The generic graph
+This is the seam that keeps rule R-02 honest. The generic graph
 nodes know *that* there is an intent catalogue and a field schema; they never
 know what the intents or fields are. Swapping the toy FAQ domain for the real
 challenge domain means writing a new YAML file, not editing a node.

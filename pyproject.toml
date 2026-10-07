@@ -24,7 +24,7 @@ where = ["src"]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
 # `-m "not integration"` por defecto: la suite tiene que correr sin Docker ni
-# credenciales (AGENTS.md 11). Los tests contra Postgres se piden explicitamente
+# credenciales (R-16). Los tests contra Postgres se piden explicitamente
 # con `pytest -m integration`.
 addopts = "-q -m 'not integration'"
 asyncio_mode = "auto"

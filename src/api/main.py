@@ -8,7 +8,7 @@ Run locally:
     docker compose up -d
     python -m scripts.migrate
     python -m scripts.seed
-    python -m scripts.serve      # not uvicorn directly: see ARCHITECTURE.md 4.4
+    python -m scripts.serve      # not uvicorn directly: see docs/01-arquitectura.md 4.4
 """
 
 from __future__ import annotations

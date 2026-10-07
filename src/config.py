@@ -1,7 +1,7 @@
 """Centralised configuration, read from environment variables / .env.
 
 Transversal like ``models/``: any layer may read it, but only ``integrations/``
-is allowed to use the credential fields (AGENTS.md section 8).
+is allowed to use the credential fields (rule R-05).
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # -- Database ---------------------------------------------------------
     # Points at the docker-compose container on 5433, NOT at a native
     # PostgreSQL on 5432. The password is deliberately absent from these
-    # defaults (AGENTS.md section 8): the real URLs come from .env.
+    # defaults (rule R-05): the real URLs come from .env.
     database_url: str = "postgresql://kognia@localhost:5433/kognia"
     # Integration tests run here, never on database_url. The name MUST end in
     # "_test": the test fixtures refuse to truncate anything else.

@@ -1,7 +1,7 @@
 """Identity data shapes.
 
 Identification is by cedula with no password. That is a deliberate scope
-decision for the demo, not an oversight -- see ARCHITECTURE.md. Anyone who
+decision for the demo, not an oversight -- see decision D-06 in docs/00-contexto-y-decisiones.md. Anyone who
 knows a cedula can impersonate that user, so nothing sensitive should be
 exposed through these endpoints until real authentication exists.
 """

@@ -2,7 +2,7 @@
 
 Lives in ``services/`` rather than in the router because deciding what a turn
 means -- which conversation it belongs to, what gets persisted, what the client
-is told -- is business logic, and AGENTS.md section 2 keeps ``api/`` free of it.
+is told -- is business logic, and rule R-01 keeps ``api/`` free of it.
 
 The router's job shrinks to: validate the HTTP shape, call this, return.
 """

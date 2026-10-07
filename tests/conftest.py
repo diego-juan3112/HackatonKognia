@@ -3,7 +3,7 @@
 Everything here runs offline: the doubles in tests/doubles/ stand in for
 Gemini, E5 and the database -- fake model, hashing embeddings, in-memory
 retriever and repositories. No fixture may require a credential, a network
-call or a running database -- AGENTS.md section 11.
+call or a running database -- rule R-16.
 
 Tests that genuinely need PostgreSQL live in tests/integration/ and are
 skipped unless a database is reachable.

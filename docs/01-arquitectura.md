@@ -16,7 +16,7 @@ que responde con **Gemini** usando documentos embebidos con **E5** en
 
 **No sabemos todavía cuál será el reto** (PQR o atención financiera, por voz o
 video). Por eso el núcleo modela *capacidades genéricas* y toda la parte
-específica del negocio entra como configuración. Ver AGENTS.md §0.
+específica del negocio entra como configuración. Ver [00-contexto-y-decisiones.md](00-contexto-y-decisiones.md) §1.
 
 ---
 
@@ -35,7 +35,7 @@ Imagina un empleado nuevo que atiende un chat:
 
 **La regla que sostiene todo el diseño:** el empleado sigue un procedimiento
 fijo escrito por nosotros. El LLM redacta y clasifica, pero **nunca decide el
-camino de la conversación**. Eso es AGENTS.md §8, y es la razón de que el grafo
+camino de la conversación**. Eso es la regla R-04, y es la razón de que el grafo
 esté construido a mano en vez de usar un agente ReAct prefabricado.
 
 ---
@@ -63,6 +63,29 @@ grep -rn "^from integrations\|^import integrations" src/services/ src/models/
 # no debe devolver nada
 ```
 
+### Reglas de arquitectura
+
+| Código | Regla |
+|---|---|
+| R-01 | Cada capa llama solo a la inmediatamente inferior: `api/` → `services/` → `integrations/`. Nunca al revés ni saltando una capa. `models/` es transversal porque no tiene comportamiento. |
+| R-02 | **Núcleo genérico (no negociable).** `services/` modela capacidades genéricas, nunca lógica de un dominio. La lógica del reto entra como configuración (catálogo de intenciones y esquema de campos en YAML) o como nodos **adicionales**; los nodos existentes no se editan. Si adaptar el agente exige modificar un nodo genérico, el nodo estaba mal diseñado: se corrige el nodo, no se contamina con el dominio. |
+| R-04 | El LLM nunca decide transiciones de estado. El grafo controla el flujo; el LLM genera contenido o interpreta intención dentro de un nodo (por eso D-07). |
+| R-05 | Ninguna credencial, API key o secreto hardcodeado: siempre variables de entorno. ⚠️ *Contradicción abierta:* la regla original dice "leídas solo en `integrations/`", pero el único lugar que las lee es `src/config.py` (§4.5), fuera de esa capa. Falta decidir cuál de los dos se corrige. |
+
+Capacidades que el núcleo sí modela (R-02):
+
+| Capacidad | Qué hace | Qué NO hace |
+|---|---|---|
+| Intake | Recibe y normaliza el turno del usuario | Asumir que es una queja o un trámite bancario |
+| Clasificación de intención | Mapea el turno a una intención de un catálogo **configurable** | Tener el catálogo hardcodeado |
+| Recolección de datos | Pide los campos que falten según un **esquema declarado** | Saber que necesita "número de póliza" |
+| Enrutamiento / escalamiento | Decide continuar, derivar o escalar a humano | Conocer los equipos de una empresa concreta |
+| Respuesta | Genera la respuesta con el contexto recuperado | Contener plantillas de un dominio |
+
+**Prueba de fuego:** el núcleo debe poder pasar de "agente de PQR" a "agente de
+atención financiera" cambiando configuración y nodos periféricos, sin tocar
+`services/graph/nodes/` genéricos.
+
 ---
 
 ## 4. Archivo por archivo
@@ -71,12 +94,11 @@ grep -rn "^from integrations\|^import integrations" src/services/ src/models/
 
 | Archivo | Rol |
 |---|---|
-| `AGENTS.md` | **Fuente única de verdad.** Reglas de arquitectura, stack, prohibiciones. Se lee antes de escribir código. |
+| `AGENTS.md` | **Índice de reglas** (`R-xx`) y qué documento leer antes de cada tarea. Se lee antes de escribir código. |
 | `CLAUDE.md` | Específico de Claude Code: MCP, plugins, skills. No reemplaza AGENTS.md. |
-| `ARCHITECTURE.md` | Este documento. |
 | `README.md` | Arranque rápido y comandos. |
-| `API.md` | Guía de los endpoints para el frontend: orden de llamadas, significado de cada campo y qué hacer con cada error. |
-| `CHANGELOG.md` | Historial de cambios por versión (exigido por AGENTS.md §7). |
+| `CHANGELOG.md` | Historial de cambios por versión (R-20). |
+| `docs/00-…06-*.md` | Los contratos del proyecto: contexto y decisiones, esta arquitectura, puertos, API, RAG, pruebas y flujo de trabajo. |
 | `docker-compose.yml` | Levanta PostgreSQL 17 + pgvector en el puerto **5433**. Puerto distinto al 5432 a propósito, para no tocar un Postgres nativo que ya exista. |
 | `pyproject.toml` | Configuración de pytest (incluido `pythonpath = ["src"]`, sin el cual nada importa), ruff y mypy. |
 | `requirements.txt` | Dependencias, agrupadas y comentadas con el porqué de cada grupo. |
@@ -216,7 +238,7 @@ rompería la regla de dependencia.
 | `retrieval/embeddings.py` | `E5Embedder` (`multilingual-e5-base`, local, sin API key). Carga **primero desde la caché** y solo descarga si falta: sin eso consultaba a Hugging Face en cada arranque. La interfaz es **asimétrica** (`embed_documents` / `embed_query`) porque E5 exige prefijos `passage:` y `query:`. |
 | `retrieval/loaders.py` | Un cargador por formato. Agregar un formato nuevo es una función y una entrada en un diccionario. |
 | `llm/factory.py` | Único archivo que sabe que el LLM es Gemini. Envía solo el control de *thinking* que aplica al modelo, con timeout y reintentos acotados. |
-| `voice/README.md` | **Vacío a propósito.** AGENTS.md §8 prohíbe implementar un proveedor de voz mientras no se decida cuál. |
+| `voice/README.md` | **Vacío a propósito.** R-08 prohíbe implementar un proveedor de voz mientras no se decida cuál. |
 | `avatar/README.md` | **Vacío a propósito**, por la misma razón. |
 
 ### 4.9 `src/api/` — la capa HTTP
@@ -308,8 +330,8 @@ No es duplicación por descuido. Son dos preguntas distintas:
 | `RetrievalPort` | PostgreSQL + pgvector, embeddings E5 | Implementado |
 | `UserRepositoryPort` | PostgreSQL | Implementado |
 | `ConversationRepositoryPort` | PostgreSQL | Implementado |
-| `VoicePort` | **Sin decidir** — ver AGENTS.md §1.1 | Declarado, sin implementar |
-| `AvatarPort` | **Sin decidir** — ver AGENTS.md §1.2 | Declarado, sin implementar |
+| `VoicePort` | **Sin decidir** — ver [00](00-contexto-y-decisiones.md) §3 | Declarado, sin implementar |
+| `AvatarPort` | **Sin decidir** — ver [00](00-contexto-y-decisiones.md) §4 | Declarado, sin implementar |
 
 Los puertos ya se probaron dos veces: se reemplazó Chroma por pgvector y NVIDIA
 por Gemini, y **ningún nodo del grafo cambió de responsabilidad** en ninguno de
@@ -398,4 +420,4 @@ python -m scripts.serve --reload --port 8080
    `integrations/avatar/` — y **solo** ahí.
 
 Borrar `config/domains/faq_demo.yaml` y `docs/faq_demo/` cuando el dominio real
-esté listo: son desechables por diseño (AGENTS.md §4).
+esté listo: son desechables por diseño (R-07).

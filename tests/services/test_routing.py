@@ -1,4 +1,4 @@
-"""The routing rules are the heart of AGENTS.md section 8.
+"""The routing rules are the heart of rule R-04.
 
 These tests exist to prove the model cannot move the state machine: every
 assertion below runs the route node and the edge function with no LLM at all.

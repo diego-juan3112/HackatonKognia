@@ -1,7 +1,7 @@
-"""The swappable ports of AGENTS.md section 5.
+"""The swappable ports of docs/02-puertos.md (rule R-03).
 
 These Protocols live in ``models/`` rather than in ``services/`` on purpose.
-``models/`` is the transversal layer (AGENTS.md section 2), so both
+``models/`` is the transversal layer (rule R-01), so both
 ``services/`` and ``integrations/`` can import it without anything having to
 depend upwards. If the ports lived in ``services/``, every adapter would have
 to import the core and the dependency rule would break.
@@ -34,7 +34,7 @@ ToolPort = BaseTool
 
 
 # ---------------------------------------------------------------------------
-# Retrieval -- provider undecided (AGENTS.md section 6).
+# Retrieval -- provider undecided (docs/04-rag.md).
 # ---------------------------------------------------------------------------
 
 
@@ -122,9 +122,9 @@ class ConversationRepositoryPort(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Voice -- provider undecided (AGENTS.md section 1.1).
+# Voice -- provider undecided (docs/00-contexto-y-decisiones.md section 3).
 # Declared, deliberately unimplemented. Do not add a concrete adapter until
-# the provider is chosen; AGENTS.md section 8 forbids it.
+# the provider is chosen; rule R-08 forbids it.
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +150,7 @@ class VoicePort(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Avatar -- provider undecided (AGENTS.md section 1.2).
+# Avatar -- provider undecided (docs/00-contexto-y-decisiones.md section 4).
 # The backend's job is the lip-sync timeline and the session handle; the mesh
 # and the renderer live in the frontend.
 # ---------------------------------------------------------------------------
