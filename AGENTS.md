@@ -28,7 +28,7 @@ o video): construimos una base adaptable, no el agente final.
 | R-02 | El núcleo (`services/graph/nodes/`) modela capacidades genéricas. Lo específico del reto entra como configuración o como nodo nuevo, nunca editando un nodo genérico. | [01](docs/01-arquitectura.md) §3 |
 | R-03 | Cambiar el proveedor de un puerto = editar solo `integrations/`. Ningún tipo de SDK cruza esa frontera. | [02](docs/02-puertos.md) |
 | R-04 | El LLM nunca decide transiciones del grafo. Genera contenido o interpreta intención dentro de un nodo; el flujo lo controla LangGraph. | [01](docs/01-arquitectura.md) §3 |
-| R-05 | Ninguna credencial, API key o secreto en el código: siempre variables de entorno. | [01](docs/01-arquitectura.md) §4.5 |
+| R-05 | Ninguna credencial, API key o secreto en el código: siempre variables de entorno, leídas solo en `src/config.py`. | [01](docs/01-arquitectura.md) §4.5 |
 | R-06 | No escribir lógica de negocio de PQR, finanzas ni ningún dominio concreto mientras no conozcamos el reto. | [00](docs/00-contexto-y-decisiones.md) §1 |
 | R-07 | El dominio de juguete (`faq_demo`) es desechable: no se extiende, se reemplaza. | [00](docs/00-contexto-y-decisiones.md) §1 |
 | R-08 | No implementar un adaptador concreto de voz ni de avatar mientras su proveedor siga abierto. | [02](docs/02-puertos.md) |

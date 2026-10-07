@@ -61,4 +61,4 @@ en esta tabla. Agregar uno es una decisión que se registra aquí.
 | Plugin | `frontend-design` | Panel Astro y avatar |
 | Plugin | `security-guidance` | Hooks en segundo plano |
 | Plugin | `playwright` | Pruebas de navegador |
-| Skill | `archify` (tt-a1i, MIT, v3.0.1) | Diagramas HTML validados contra el código. Instalada a nivel de usuario (`~/.claude/skills/archify`), no en el repo. Revisada: sin dependencias npm; su única llamada de red es un chequeo de versión, que se apaga con `ARCHIFY_UPDATE_CHECK_DISABLED=1`. Los diagramas viven fuera del repo, en `../HackatonKognia-docs/` |
+| Skill | `archify` (tt-a1i, MIT, v3.0.1) | Diagramas HTML validados contra el código. Instalada a nivel de usuario (`~/.claude/skills/archify`), no en el repo. Revisada: sin dependencias npm; su única llamada de red es un chequeo de versión, que se apaga con `ARCHIFY_UPDATE_CHECK_DISABLED=1`. Los diagramas viven en este repo, en `docs/diagrams/` |

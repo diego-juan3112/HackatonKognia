@@ -70,7 +70,7 @@ grep -rn "^from integrations\|^import integrations" src/services/ src/models/
 | R-01 | Cada capa llama solo a la inmediatamente inferior: `api/` → `services/` → `integrations/`. Nunca al revés ni saltando una capa. `models/` es transversal porque no tiene comportamiento. |
 | R-02 | **Núcleo genérico (no negociable).** `services/` modela capacidades genéricas, nunca lógica de un dominio. La lógica del reto entra como configuración (catálogo de intenciones y esquema de campos en YAML) o como nodos **adicionales**; los nodos existentes no se editan. Si adaptar el agente exige modificar un nodo genérico, el nodo estaba mal diseñado: se corrige el nodo, no se contamina con el dominio. |
 | R-04 | El LLM nunca decide transiciones de estado. El grafo controla el flujo; el LLM genera contenido o interpreta intención dentro de un nodo (por eso D-07). |
-| R-05 | Ninguna credencial, API key o secreto hardcodeado: siempre variables de entorno. ⚠️ *Contradicción abierta:* la regla original dice "leídas solo en `integrations/`", pero el único lugar que las lee es `src/config.py` (§4.5), fuera de esa capa. Falta decidir cuál de los dos se corrige. |
+| R-05 | Ninguna credencial, API key o secreto hardcodeado: siempre variables de entorno, leídas **solo en `src/config.py`** (§4.5). Ningún otro módulo usa `os.environ` ni carga `.env`. `config.py` es transversal como `models/`, pero los campos de credenciales solo los usa `integrations/`. |
 
 Capacidades que el núcleo sí modela (R-02):
 

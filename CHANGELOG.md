@@ -18,6 +18,11 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
   duras y `D-01` a `D-08` para decisiones tomadas. Código, comentarios, READMEs
   y configuración citan ahora el código en vez de `AGENTS.md §N`. No se agregó
   ninguna regla nueva: solo se reubicaron y numeraron las existentes.
+- **R-05 alineada con el código:** las variables de entorno se leen solo en
+  `src/config.py` (antes decía "solo en `integrations/`", que el código nunca
+  cumplió). Verificado: ningún otro módulo de `src/` ni `scripts/` lee el entorno.
+- Los diagramas de `archify` viven en `docs/diagrams/` dentro del repo; se
+  abandona `../HackatonKognia-docs/`.
 
 ### Added
 - `docs/00-contexto-y-decisiones.md` registra las mediciones del 2026-10-06
