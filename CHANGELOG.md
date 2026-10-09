@@ -5,6 +5,18 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Fixed — producción (2026-10-09 ≈ 15:25)
+- **Texto del sistema mostrado como si lo dijera el usuario e interrupciones:** la pista de contexto
+  del transcriptor de OpenAI (añadida en `3f14414`) se devolvía como transcripción ante ruido o silencio
+  y abría turnos fantasma. Se quitó (`6fdf7fa`).
+- **Turnos fantasma por ruido** («公主。», «Gracias por ver el video»): el front descarta transcripciones
+  inverosímiles (otros alfabetos, < 2 letras, frases típicas de alucinación), cancela la respuesta del
+  motor y no las analiza (`web/src/voice/transcript-filter.ts`, 200 pruebas de front).
+- **Falso «cifra no verificada»:** el verificador ahora reconoce los dígitos de teléfonos y direcciones
+  leídos de la fuente. `include_contact` solo a pedido expreso (prompt `reto01-ips-v9`).
+- Verificado en caliente con el motor real y voz clonada: respuesta completa sin interrupciones; con ráfagas
+  de ruido como micrófono, 0 detecciones de voz y 0 turnos fantasma.
+
 ### Removed — Limpieza (rama `chore/limpieza-repo`, 2026-10-09, D-23)
 - **Base genérica retirada:** chat con cédula (rutas `auth`, `chat`, `conversations`, `users`,
   `api/main.py`, `dependencies.py`), PostgreSQL + pgvector (`integrations/db`, `migrations/`,

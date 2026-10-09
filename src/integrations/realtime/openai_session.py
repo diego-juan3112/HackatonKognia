@@ -19,9 +19,6 @@ from models.voice import ConnectInfo, EngineSetup, ProviderUnavailable, Realtime
 
 log = logging.getLogger(__name__)
 
-_TRANSCRIBE_PROMPT = ("Conversación en español de Colombia sobre IPS, hospitales, clínicas, sedes, camas, "
-                      "ambulancias, municipios y departamentos de Colombia (Medellín, Bogotá, Cali, Melgar).")
-
 
 class OpenAIRealtimeSession:
     engine = "openai"
@@ -53,10 +50,10 @@ class OpenAIRealtimeSession:
         turn_detection = {**self._turn_detection, "create_response": True, "interrupt_response": self._interrupt}
         audio: dict = {
             "input": {"format": {"type": "audio/pcm", "rate": 24000},
-                      # The prompt biases the transcriber to Spanish domain words: on noise it was
-                      # hallucinating text in other scripts («公主。», live test 2026-10-09).
-                      "transcription": {"model": self._transcribe, "language": "es",
-                                        "prompt": _TRANSCRIBE_PROMPT},
+                      # NO transcription "prompt": in production (2026-10-09) the transcriber echoed the
+                      # prompt itself as the user's words on noise/silence, opening phantom turns that
+                      # interrupted the agent. Noise hallucinations are filtered in the browser instead.
+                      "transcription": {"model": self._transcribe, "language": "es"},
                       "turn_detection": turn_detection},
         }
         if self._noise:
