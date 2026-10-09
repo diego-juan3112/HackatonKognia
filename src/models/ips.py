@@ -181,6 +181,8 @@ class ToolEnvelope(BaseModel):
     error: ToolError | None = None
     next_cursor: str | None = None
     context_patch: dict[str, Any] = Field(default_factory=dict)
+    # Grounded text the engine receives as the function output (services/ips/for_model.py).
+    for_model: str = ""
 
 
 # ---------------------------------------------------------------------------

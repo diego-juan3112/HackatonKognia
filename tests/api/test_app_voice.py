@@ -149,6 +149,18 @@ def test_analysis_drops_audio_without_consent(client):
     assert reqs[0][1] is None and reqs[1][1] == b"RIFF....WAVE" and reqs[1][0].audio_wav_b64 is None
 
 
+def test_verify_answer_checks_figures_against_the_turn_evidence(client):
+    h = _auth(client)
+    env = client.post("/tools/aggregate_ips", headers=h, json={
+        "tool_call_id": "v1", "args": {"metric": "provider_count"}, "context": {"state_version": 0}}).json()
+    assert env["for_model"].startswith("[Datos de datos.gov.co")
+    good = client.post("/verify/answer", headers=h, json={"turn_id": "t1", "text": "Hay 9.320 IPS.",
+                                                          "tool_results": [env]}).json()
+    bad = client.post("/verify/answer", headers=h, json={"turn_id": "t1", "text": "Hay 12.500 IPS.",
+                                                         "tool_results": [env]}).json()
+    assert good["grounded"] is True and bad["grounded"] is False and bad["unsupported"] == [12500]
+
+
 def test_feedback_is_accepted(client):
     r = client.post("/feedback", headers=_auth(client), json={"turn_id": "t1", "kind": "tone", "category": "TONE"})
     assert r.status_code == 202 and client.container.feedback.events[0].kind == "tone"  # type: ignore[attr-defined]

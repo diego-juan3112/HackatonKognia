@@ -119,6 +119,16 @@ class FeedbackEvent(BaseModel):
     category: Literal["ASR", "ENTITY", "UNSUPPORTED", "TOOL_FAILURE", "WRONG_AGGREGATE", "TONE"] | None = None
 
 
+class VerifyAnswerRequest(BaseModel):
+    """Body of ``POST /verify/answer``: the agent's text and the tool results of that turn."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    turn_id: str = Field(min_length=1, max_length=128)
+    text: str = Field(max_length=8000)
+    tool_results: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
+
+
 class ProviderUnavailable(Exception):
     """A credential provider failed or is not configured (maps to 503)."""
 

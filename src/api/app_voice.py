@@ -41,7 +41,9 @@ from models.voice import (  # noqa: E402
     RealtimeSessionRequest,
     SessionCreateRequest,
     SpeechSessionRequest,
+    VerifyAnswerRequest,
 )
+from services.ips.verify import verify as verify_figures  # noqa: E402
 from services.session_service import InvalidSession, SessionClaims  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -181,6 +183,12 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
         result = await c.analyst.analyze(body.model_copy(update={"audio_wav_b64": None}), audio)
         del audio  # the clip lives only for this request (R-26)
         return result.model_dump()
+
+    @app.post("/verify/answer")
+    async def verify_answer(body: VerifyAnswerRequest, _: SessionClaims = Depends(session)) -> dict[str, Any]:
+        # Only the data part of each envelope counts as evidence (R-22).
+        evidence = [r.get("data", r) for r in body.tool_results if r.get("status", "ok") == "ok"]
+        return {"turn_id": body.turn_id, **verify_figures(body.text, evidence)}
 
     @app.post("/feedback", status_code=202)
     async def feedback(body: FeedbackEvent, _: SessionClaims = Depends(session),
