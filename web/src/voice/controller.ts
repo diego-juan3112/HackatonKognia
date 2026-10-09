@@ -7,9 +7,9 @@
  * analyst calls, style decisions and the user controls.
  */
 import { analyze, DIRECTIVES, inferStyle } from "./analyst";
-import { fetchBrief, fetchHealth, runTool, verifyAnswer, type ToolContext } from "./api";
+import { clonedVoiceEngines, defaultVoiceMode, fetchBrief, fetchHealth, fetchVoiceModes, runTool, verifyAnswer, type ToolContext } from "./api";
 import { getMicTap } from "./audio/mic-tap";
-import { createEngine, engineInfo, engineLabel, otherEngine } from "./engine-factory";
+import { createEngine, engineInfo, engineLabel, otherEngine, realEngines } from "./engine-factory";
 import type { EngineDeps } from "./fake-engine";
 import * as store from "./store";
 import type {
@@ -618,13 +618,20 @@ export async function requery(toolCallId: string): Promise<void> {
   store.setRequery(toolCallId, { pending: false, matches, ms: env.trace.ms, at: Date.now() });
 }
 
-// Ask the backend which voices it offers, so the UI only shows what exists (docs/08 §3),
-// and start with its default voice (`default_voice_mode`) unless a session already runs.
-void fetchHealth().then((h) => {
-  store.setVoiceModes(h.modes);
-  store.setHealth(h.tools, h.models);
+// Tool catalogue and model ids for the admin board (GET /health).
+void fetchHealth().then((h) => store.setHealth(h.tools, h.models));
+
+// Ask the backend which voices it offers, so the UI only shows what exists (docs/08 §3).
+void fetchVoiceModes().then((modes) => {
+  store.setVoiceModes(modes);
+  // Cloned voice by default when the backend offers it and the engine supports it (docs/08 §15.1);
+  // the selector in /admin goes back to the engine voice.
   const s = store.getState();
-  if (!s.running && h.defaultMode === "cloned" && h.clonedEngines.includes(s.engine)) store.setVoiceMode("cloned");
+  const engines = clonedVoiceEngines();
+  const supported = engineInfo(s.engine).clonedVoice && (engines === null || engines.includes(s.engine));
+  if (realEngines() && !s.running && s.voiceMode === "engine" && defaultVoiceMode() === "cloned" && modes.includes("cloned") && supported) {
+    store.setVoiceMode("cloned");
+  }
 });
 
 // Initial engine metadata, so the HUD is truthful before the first session.

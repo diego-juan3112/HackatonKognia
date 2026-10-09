@@ -90,6 +90,9 @@ export function hostAvatar(stage: HTMLElement, canvas: HTMLCanvasElement): Avata
   const unsubscribe = subscribe((state, slices) => {
     if (!handle) return;
     if (slices.has("transcript")) pulse = 1;
+    // The session may start or stop on any slice; keep the analyser in step.
+    const hadAnalyser = analyserOn;
+    if (syncAnalyser() !== hadAnalyser) mouth(state.status === "speaking");
     if (slices.has("status") || slices.has("reset") || slices.has("meta")) {
       safely(() => handle?.setState(state.status));
       mouth(state.status === "speaking");

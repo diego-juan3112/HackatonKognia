@@ -3,6 +3,8 @@
  * Top bar: the brand and two destinations. Nothing else lives here; the engine
  * and voice selectors belong to the admin board.
  */
+import CircleHelp from "@lucide/astro/icons/circle-question-mark";
+
 const path = Astro.url.pathname.replace(/\/$/, "") || "/";
 const nav = [
   { href: "/consola", label: "Conversación" },
@@ -30,6 +32,9 @@ const nav = [
         </a>
       ))
     }
+    <button type="button" class="help" data-help-tour data-testid="help-button" aria-label="Ayuda: ver el recorrido guiado" aria-haspopup="dialog" title="Ayuda">
+      <CircleHelp aria-hidden="true" />
+    </button>
   </nav>
 </header>
 
@@ -120,6 +125,31 @@ const nav = [
   nav a:hover {
     background: var(--subtle-2);
     color: var(--ink);
+  }
+
+  .help {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: none;
+    color: var(--accent);
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+  }
+
+  .help:hover {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
+
+  .help :global(svg) {
+    width: 1.375rem;
+    height: 1.375rem;
   }
 
   nav a[aria-current="page"] {
