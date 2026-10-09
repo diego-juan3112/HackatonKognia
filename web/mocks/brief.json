@@ -36,7 +36,7 @@
     "¿Cuántas IPS hay en Bogotá?",
     "¿Cuántas camas hay en Melgar?"
   ],
-  "spoken_brief": "Soy un asistente de inteligencia artificial. Consulto en vivo el registro de IPS del Ministerio de Salud, con corte a noviembre de 2022: 9.320 prestadores y 10.921 códigos de sede. Pregúntame, por ejemplo: cuántas IPS públicas, privadas y mixtas hay, o qué municipios tienen más camas.",
+  "spoken_brief": "Hola. Consulto en vivo el registro de IPS del Ministerio de Salud, con corte a noviembre de 2022: 9.320 prestadores y 10.921 códigos de sede. Pregúntame, por ejemplo: cuántas IPS públicas, privadas y mixtas hay, o qué municipios tienen más camas.",
   "trace": [
     {
       "soql": "SELECT count(*) AS n_rows, count(DISTINCT c_digo_prestador) AS providers, count(DISTINCT c_digo_sede) AS site_codes",

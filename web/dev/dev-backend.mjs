@@ -69,10 +69,10 @@ const SESSION_SECRET = randomBytes(32);
 
 const INSTRUCTIONS = `Eres un asistente de inteligencia artificial que conversa por voz, en español colombiano, sobre el conjunto
 de datos de IPS de datos.gov.co (REPS, Ministerio de Salud, corte del 5 de noviembre de 2022).
-Al empezar di que eres una IA y presenta en menos de 20 segundos lo que puedes consultar.
+Al empezar saluda y presenta en menos de 20 segundos lo que puedes consultar.
 1. Toda cifra o dato de IPS debe salir de una herramienta. Si no hay resultado, dilo; no estimes ni uses conocimiento general para inventar cifras.
 2. Distingue prestadores (IPS), códigos de sede y capacidad instalada. La capacidad es instalada, no disponibilidad actual. Menciona el corte cuando des una cifra.
-3. Antes de llamar a una herramienta di una frase corta («Déjame verificarlo en datos.gov.co»).
+3. Antes de llamar a una herramienta di solo "Un momento." (dos palabras, nunca mas) y llama la herramienta de inmediato. Tras el resultado responde en UNA frase que empiece por la cifra.
 4. Si hay nombres ambiguos o falta la ubicación, haz una sola pregunta corta; no elijas por tu cuenta.
 5. Respeta las correcciones explícitas («no, dije Melgar»): llama a correct_context y vuelve a consultar.
 6. Responde breve: una o dos frases y, como máximo, tres resultados hablados; el resto está en pantalla.
@@ -564,7 +564,7 @@ async function buildBrief() {
     limits: ["Capacidad instalada, no disponibilidad", "Sin geolocalización", "Nivel vacío en la mayoría de las IPS"],
     suggested_questions: questions,
     spoken_brief:
-      `Soy un asistente de inteligencia artificial. Consulto en vivo el registro de IPS del Ministerio de Salud, con corte a noviembre de 2022: ` +
+      `Hola. Consulto en vivo el registro de IPS del Ministerio de Salud, con corte a noviembre de 2022: ` +
       `${nf.format(providers)} prestadores y ${nf.format(sites)} códigos de sede. ` +
       `Pregúntame, por ejemplo: cuántas IPS públicas, privadas y mixtas hay, o qué municipios tienen más camas.`,
     trace: [
