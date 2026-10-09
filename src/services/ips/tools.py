@@ -39,12 +39,24 @@ from models.ips import (
     Trace,
     VerifyRegistrationArgs,
 )
+from contextvars import ContextVar
+
 from models.ports import DatasetPort
 from services.ips import for_model, soql
 from services.ips.lexicon import DISTRICTS, Lexicon
 from services.ips.normalize import norm
 
 ALWAYS_WARN = ["CUTOFF_2022"]
+
+# The methods that served the current tool call (shown on the admin board). A ContextVar
+# keeps concurrent calls of different evaluators apart.
+_STEPS: ContextVar[list[str] | None] = ContextVar("ips_tool_steps", default=None)
+
+
+def _step(text: str) -> None:
+    steps = _STEPS.get()
+    if steps is not None:
+        steps.append(text)
 # evidence.unit is a code; data.unit is the Spanish label the UI shows.
 UNIT_LABELS = {"providers": "prestadores", "site_codes": "códigos de sede", "sites": "sedes"}
 _CACHE_RANK = {"live": 0, "fresh": 1, "stale": 2}
@@ -154,21 +166,34 @@ class IpsToolService:
             return self._done[key]
         if name not in self._handlers:
             raise KeyError(name)
+        steps: list[str] = [f"POST /api/tools/{name} (api/app_voice.py · run_tool)",
+                            f"IpsToolService.run · validar con {TOOL_ARGS[name].__name__} (models/ips.py)"]
+        token = _STEPS.set(steps)
         try:
-            args = TOOL_ARGS[name].model_validate(req.args)
-        except ValidationError as exc:
-            return self._envelope(req, "invalid", error=ToolError(
-                code="INVALID_ARGS", message="Argumentos inválidos para la herramienta.",
-                hint=_validation_hint(exc), retryable=True))
-        deadline = Deadline(self._deadline_s)
-        try:
-            env = await self._handlers[name](req, args, deadline)
-        except _Reject as r:
-            env = self._envelope(req, r.status, data=r.data, error=r.error, warnings=r.warnings)
-        except DatasetUnavailable as exc:
-            env = self._envelope(req, "unavailable", error=ToolError(
-                code=exc.code, message="La fuente datos.gov.co no respondió a tiempo.", retryable=True))
-        env.for_model = for_model.render(name, env)
+            try:
+                args = TOOL_ARGS[name].model_validate(req.args)
+            except ValidationError as exc:
+                env = self._envelope(req, "invalid", error=ToolError(
+                    code="INVALID_ARGS", message="Argumentos inválidos para la herramienta.",
+                    hint=_validation_hint(exc), retryable=True))
+                steps.append("argumentos inválidos: no se consulta la fuente")
+            else:
+                deadline = Deadline(self._deadline_s)
+                steps.append(f"IpsToolService.{self._handlers[name].__name__.lstrip('_')} (services/ips/tools.py)")
+                try:
+                    env = await self._handlers[name](req, args, deadline)
+                except _Reject as r:
+                    env = self._envelope(req, r.status, data=r.data, error=r.error, warnings=r.warnings)
+                    steps.append(f"resultado {r.status}: no se consulta la fuente")
+                except DatasetUnavailable as exc:
+                    env = self._envelope(req, "unavailable", error=ToolError(
+                        code=exc.code, message="La fuente datos.gov.co no respondió a tiempo.", retryable=True))
+                    steps.append(f"SocrataClient: fuente no disponible ({exc.code})")
+            env.for_model = for_model.render(name, env)
+            steps.append("for_model.render · texto fundamentado para el motor (services/ips/for_model.py)")
+            env.pipeline = list(steps)
+        finally:
+            _STEPS.reset(token)
         if env.status in ("ok", "empty"):
             self._done[key] = env
             while len(self._done) > _MAX_IDEMPOTENT:
@@ -216,7 +241,11 @@ class IpsToolService:
 
     async def _q(self, sql: str, deadline: Deadline, bypass: bool) -> QueryResult:
         soql.assert_safe(sql)
-        return await self._dataset.query(sql, deadline=deadline, bypass_cache=bypass)
+        _step("soql · consulta armada con columnas de lista cerrada (services/ips/soql.py)")
+        res = await self._dataset.query(sql, deadline=deadline, bypass_cache=bypass)
+        _step(f"SocrataClient.query → datos.gov.co SODA3 · {res.cache_status} · {res.ms} ms · "
+              f"{len(res.rows)} filas (integrations/datasets/socrata_client.py)")
+        return res
 
     def _resolve_location(self, department: str | None, municipality: str | None
                           ) -> tuple[dict[str, str | None], list[str]]:
@@ -225,6 +254,7 @@ class IpsToolService:
         warnings: list[str] = []
         if department:
             d = self._lex.resolve_department(department)
+            _step(f"Lexicon.resolve_department({department!r}) → {d.status} {d.value or d.candidates}")
             if d.status == "ambiguous":
                 raise _Reject("ambiguous", data={"field": "department", "candidates": d.candidates,
                                                  "question": "¿A cuál departamento te refieres?"})
@@ -236,6 +266,7 @@ class IpsToolService:
             resolved["department"], warnings = d.value, warnings + d.warnings
         if municipality:
             m = self._lex.resolve_municipality(municipality, resolved["department"])
+            _step(f"Lexicon.resolve_municipality({municipality!r}) → {m.status} {m.value or m.candidates}")
             if m.status == "ambiguous":
                 raise _Reject("ambiguous", data={"field": "municipality", "candidates": m.candidates,
                                                  "question": "¿De qué departamento es ese municipio?"})
@@ -255,6 +286,7 @@ class IpsToolService:
                     hint="Indica capacity_group (p. ej. CAMAS) junto con capacity_type.", retryable=True))
             return None, None, []
         g = self._lex.resolve_capacity_group(group)
+        _step(f"Lexicon.resolve_capacity_group({group!r}) → {g.status} {g.value or g.candidates}")
         if g.status != "ok":
             raise _Reject("ambiguous" if g.candidates else "invalid", data={"field": "capacity_group",
                           "candidates": g.candidates}, error=None if g.candidates else ToolError(

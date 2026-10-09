@@ -228,6 +228,8 @@ class ToolEnvelope(BaseModel):
     context_patch: dict[str, Any] = Field(default_factory=dict)
     # Grounded text the engine receives as the function output (services/ips/for_model.py).
     for_model: str = ""
+    # Additive: the backend methods that served this call, in order (admin board).
+    pipeline: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

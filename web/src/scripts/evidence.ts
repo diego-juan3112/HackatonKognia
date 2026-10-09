@@ -211,6 +211,14 @@ export function summaryLine(t: ToolEntry): string {
 }
 
 /** Full body of an entry (everything but the outer list item). */
+/** Backend methods that served the call, in order (envelope.pipeline, added 2026-10-09). */
+function pipelineList(env: unknown): string {
+  const raw = (env as { pipeline?: unknown } | undefined)?.pipeline;
+  const steps = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+  if (!steps.length) return "";
+  return `<p class="meta"><strong>Cómo se resolvió en el servidor</strong></p><ol class="pipeline mono" data-testid="pipeline">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`;
+}
+
 export function evidenceBody(t: ToolEntry, s: ConsoleState): string {
   const env = t.evidence_ref ? s.evidence[t.evidence_ref] : undefined;
   const head = `<div class="head"><strong class="tool-name">${esc(toolLabel(t.name))}</strong><span class="args">${esc(argsLine(t))}</span></div>`;
@@ -232,6 +240,7 @@ export function evidenceBody(t: ToolEntry, s: ConsoleState): string {
       <summary>Detalle técnico</summary>
       <p class="meta"><code class="mono">${esc(t.name)}</code><span class="num"><strong>${num(t.trace.rows)}</strong> ${t.trace.rows === 1 ? "fila" : "filas"}</span></p>
       ${t.trace.soql ? `<pre class="mono soql" data-testid="soql" tabindex="0" aria-label="Consulta SoQL"><code>${soql(t.trace.soql)}</code></pre>` : ""}
+      ${pipelineList(env)}
     </details>
     ${env && env.status === "ok" ? `<p class="src">Fuente: datos.gov.co, conjunto ${esc(env.evidence.dataset_id)} (MinSalud, REPS). Corte: ${esc(cutoff)}. Consultado a las ${fetched.replace(/\.\s*$/, "")}.</p>` : ""}
     ${warnings ? `<ul class="warnings">${warnings}</ul>` : ""}

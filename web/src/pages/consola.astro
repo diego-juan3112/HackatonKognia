@@ -27,8 +27,9 @@ import IconBank from "../components/IconBank.astro";
   const HIDDEN_STOP_MS = 60_000;
 
   panel("console", () => {
-    // Re-entering the console starts clean: a session left behind is never resumed.
-    controller.restart();
+    // Re-entering the console keeps the finished conversation on screen (and on the admin
+    // board): leaving already stopped the engine, so nothing is resumed. Only «Reiniciar»
+    // clears it. (Regression 2026-10-09: an automatic restart() here wiped the summary.)
 
     // Leaving the console ends the conversation (docs/08 §10): socket, mic, player and timers.
     let hiddenTimer: ReturnType<typeof setTimeout> | undefined;
