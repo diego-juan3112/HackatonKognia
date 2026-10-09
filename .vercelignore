@@ -16,13 +16,14 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
-# Fuera del runtime de Reto 01
-tests/
-docs/
-migrations/
-infra/
-scripts/
-spikes/
-.claude/
-Dockerfile
-docker-compose.yml
+# Fuera del runtime de Reto 01. ANCLADOS a la raiz con "/": sin la barra, "scripts/"
+# tambien excluia web/src/scripts/ y el build de Astro fallaba en Vercel (2026-10-09).
+/tests/
+/docs/
+/migrations/
+/infra/
+/scripts/
+/spikes/
+/.claude/
+/Dockerfile
+/docker-compose.yml
