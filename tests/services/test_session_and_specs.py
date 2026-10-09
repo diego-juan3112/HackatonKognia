@@ -50,3 +50,16 @@ def test_tool_specs_match_the_validated_models():
             n for n, f in TOOL_ARGS[spec.name].model_fields.items() if f.is_required()}, spec.name
         text = str(spec.parameters)
         assert "anyOf" not in text and "$defs" not in text  # Gemini function declarations reject them
+        _assert_string_enums(spec.parameters, spec.name)
+
+
+def _assert_string_enums(schema: object, where: str) -> None:
+    """Gemini only accepts string enums (smoke 2026-10-09: 400 on an integer enum)."""
+    if isinstance(schema, dict):
+        if "enum" in schema:
+            assert all(isinstance(v, str) for v in schema["enum"]), where
+        for v in schema.values():
+            _assert_string_enums(v, where)
+    elif isinstance(schema, list):
+        for v in schema:
+            _assert_string_enums(v, where)

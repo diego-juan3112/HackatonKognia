@@ -9,11 +9,14 @@ so a ``cloned`` request comes back as ``engine`` (docs/08 section 15.6).
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import httpx
 
 from models.voice import ConnectInfo, EngineSetup, ProviderUnavailable, RealtimeSession, RealtimeSessionRequest
+
+log = logging.getLogger(__name__)
 
 _WS = ("wss://generativelanguage.googleapis.com/ws/"
        "google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained")
@@ -69,6 +72,8 @@ class GeminiLiveSession:
         if r.status_code == 429:
             raise ProviderUnavailable("ENGINE_QUOTA", "Gemini: límite o cuota")
         if r.status_code != 200:
+            # Google's message names the offending field; without it a 400 is opaque.
+            log.warning("Gemini auth_tokens HTTP %s: %s", r.status_code, r.text[:300])
             raise ProviderUnavailable("ENGINE_CONNECT_FAILED", f"Gemini: HTTP {r.status_code}")
         name = r.json().get("name", "")
         return RealtimeSession(

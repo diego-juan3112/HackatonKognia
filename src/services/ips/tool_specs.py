@@ -11,8 +11,10 @@ from __future__ import annotations
 from models.voice import ToolSpec
 
 _NATURE = {"type": "string", "enum": ["Pública", "Privada", "Mixta"], "description": "Naturaleza jurídica"}
-_LEVEL = {"type": "integer", "enum": [1, 2, 3],
-          "description": "Nivel de atención registrado. Vacío en el 89% de las IPS: no lo infieras"}
+# No integer enum: Gemini function declarations only accept string enums
+# (smoke 2026-10-09: auth_tokens -> 400 INVALID_ARGUMENT on enum[0] TYPE_STRING).
+_LEVEL = {"type": "integer", "minimum": 1, "maximum": 3,
+          "description": "Nivel de atención registrado (1, 2 o 3). Vacío en el 89% de las IPS: no lo infieras"}
 _DEPT = {"type": "string", "description": "Departamento tal como lo dijo la persona (p. ej. «Antioquia», «Bogotá»)"}
 _MUNI = {"type": "string", "description": "Municipio tal como lo dijo la persona; si hay homónimos, agrega department"}
 _GROUP = {"type": "string", "description": "Grupo de capacidad: CAMAS, SALAS, CAMILLAS, CONSULTORIOS, AMBULANCIAS, "

@@ -9,11 +9,15 @@ still validated server-side (R-23) and rate-limited (R-28).
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 import httpx
 
 from models.voice import ConnectInfo, EngineSetup, ProviderUnavailable, RealtimeSession, RealtimeSessionRequest
+
+
+log = logging.getLogger(__name__)
 
 
 class OpenAIRealtimeSession:
@@ -65,6 +69,7 @@ class OpenAIRealtimeSession:
         if r.status_code == 429:
             raise ProviderUnavailable("ENGINE_QUOTA", "OpenAI: límite o cuota")
         if r.status_code != 200:
+            log.warning("OpenAI client_secrets HTTP %s: %s", r.status_code, r.text[:300])
             raise ProviderUnavailable("ENGINE_CONNECT_FAILED", f"OpenAI: HTTP {r.status_code}")
         data = r.json()
         secret = data.get("value") or data.get("client_secret", {}).get("value")
