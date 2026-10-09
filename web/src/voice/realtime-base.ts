@@ -153,6 +153,8 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
   /** Makes the agent say the brief (docs/09 §8) as its greeting. */
   protected abstract sendGreeting(spokenBrief: string): void;
   protected abstract sendToolOutput(call: ProviderToolCall, output: Record<string, unknown>): void;
+  /** Sends a tagged note as a user turn and asks for a spoken reaction. */
+  protected abstract sendNote(text: string): void;
   protected abstract sendSeed(context: ContextEnvelope): void;
   protected abstract sendStyle(style: StyleDecision): void;
   /** Tells the provider what was actually heard of an interrupted generation. */
@@ -177,10 +179,14 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     });
     const playback = player.resume();
     const mic = getMicTap();
-    const micReady = mic.acquire(this.deps.now).then(
-      () => null,
-      (err: unknown) => (err instanceof MicError ? err : new MicError("MIC_DENIED", "No se pudo abrir el micrófono.")),
-    );
+    // Without the explicit voice consent (R-26) the session is text only: the mic is never opened.
+    const wantMic = this.deps.micAllowed?.() ?? true;
+    const micReady: Promise<MicError | null | "off"> = wantMic
+      ? mic.acquire(this.deps.now).then(
+          () => null,
+          (err: unknown) => (err instanceof MicError ? err : new MicError("MIC_DENIED", "No se pudo abrir el micrófono.")),
+        )
+      : Promise.resolve("off");
 
     try {
       const [grant, brief] = await Promise.all([
@@ -199,15 +205,13 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
 
       const micError = await micReady;
       this.alive(epoch);
-      if (micError) {
+      if (micError === "off") {
+        // Text mode until «Usar mi voz»; setMicEnabled(true) opens it later.
+      } else if (micError) {
         // Text mode still works (docs/08 §12): report it and go on.
         this.emit("error", { code: micError.code, message: micError.message, retryable: false });
       } else {
-        this.mic = mic;
-        this.micHeld = true;
-        this.releaseMicFrames = mic.onFrame(this.inputRate, (pcm) => {
-          if (this.connected && !this.renewing && this.transportReady) this.sendAudioFrame(pcm);
-        });
+        this.holdMic(mic);
       }
       if (!(await playback)) {
         this.emit("error", { code: "PLAYBACK_FAILED", message: "El navegador bloqueó la reproducción de audio. Pulsa Iniciar de nuevo.", retryable: false });
@@ -227,7 +231,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
       }
     } catch (err) {
       void micReady.then((e) => {
-        if (!e && !this.micHeld) mic.release();
+        if (e === null && !this.micHeld) mic.release();
       });
       if (epoch !== this.epoch) throw err; // superseded by disconnect(): nothing to report
       this.teardown();
@@ -267,6 +271,55 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     this.bargeIn(false);
     this.expecting = false;
     this.refreshStatus();
+  }
+
+  /** Opens or closes the microphone mid-session (explicit voice consent, R-26). */
+  async setMicEnabled(on: boolean): Promise<void> {
+    if (!on) {
+      this.dropMic();
+      return;
+    }
+    if (!this.connected || this.micHeld) return;
+    const epoch = this.epoch;
+    const mic = getMicTap();
+    try {
+      await mic.acquire(this.deps.now);
+    } catch (err) {
+      const e = err instanceof MicError ? err : new MicError("MIC_DENIED", "No se pudo abrir el micrófono.");
+      if (epoch === this.epoch) this.emit("error", { code: e.code, message: e.message, retryable: false });
+      return;
+    }
+    if (epoch !== this.epoch || !this.connected || this.micHeld) {
+      mic.release();
+      return;
+    }
+    this.holdMic(mic);
+  }
+
+  /** A system note the agent must react to aloud, e.g. the figure check of docs/10 §5. */
+  sendSystemNote(text: string): void {
+    if (!this.connected || !this.transportReady) return;
+    this.expect();
+    this.sendNote(text);
+    this.refreshStatus();
+  }
+
+  private holdMic(mic: MicTap): void {
+    this.mic = mic;
+    this.micHeld = true;
+    this.releaseMicFrames = mic.onFrame(this.inputRate, (pcm) => {
+      if (this.connected && !this.renewing && this.transportReady) this.sendAudioFrame(pcm);
+    });
+  }
+
+  private dropMic(): void {
+    this.releaseMicFrames?.();
+    this.releaseMicFrames = null;
+    if (this.micHeld) {
+      this.micHeld = false;
+      this.mic?.release();
+    }
+    this.mic = null;
   }
 
   applyStyle(style: StyleDecision): void {
@@ -734,21 +787,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
       if (this.toolHistory.length > 5) this.toolHistory.shift();
     }
     // Only validated evidence goes back to the model, marked as data (docs/08 §5.3, R-22).
-    const output: Record<string, unknown> = {
-      status: env.status,
-      data: env.data,
-      warnings: env.evidence.warnings,
-      evidence_summary: {
-        dataset_id: env.evidence.dataset_id,
-        cutoff: env.evidence.cutoff_raw,
-        unit: env.evidence.unit,
-        filters: env.evidence.filters,
-        cache_status: env.evidence.cache_status,
-        complete: env.evidence.complete,
-      },
-      note: SOURCE_NOTE,
-    };
-    if (env.error) output.error = { code: env.error.code, message: env.error.message };
+    const output = toolOutputForModel(env);
     if (this.connected && this.transportReady && call.serial === this.transportSerial) {
       if (turn) this.expect();
       this.sendToolOutput(call, output);
@@ -792,7 +831,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
       summary: "",
       recent_turns: this.history.slice(-8),
       tool_results: this.toolHistory.slice(-5),
-      allowed_tools: ["search_ips", "get_ips_details", "aggregate_ips", "compare_ips", "correct_context"],
+      allowed_tools: [...new Set<string>(["search_ips", "get_ips_details", "aggregate_ips", "compare_ips", "correct_context", ...this.toolHistory.map((t) => t.name)])],
     };
   }
 
@@ -841,13 +880,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     this.expecting = false;
     clearTimeout(this.expectTimer);
     this.closeTransport();
-    this.releaseMicFrames?.();
-    this.releaseMicFrames = null;
-    if (this.micHeld) {
-      this.micHeld = false;
-      this.mic?.release();
-    }
-    this.mic = null;
+    this.dropMic();
     if (this.releasePlayer) {
       // Only the owner may silence the shared player.
       this.player?.flush();
@@ -872,6 +905,36 @@ export function deliveredText(text: string, playedMs: number, audioMs: number): 
   if (words.length === 0 || playedMs <= 0 || audioMs <= 0) return "";
   const fraction = Math.min(1, playedMs / audioMs);
   return words.slice(0, Math.floor(words.length * fraction)).join(" ");
+}
+
+/**
+ * Function output handed to the engine. The backend's `for_model` is the grounded
+ * compact text (docs/09 §5): the engine gets `{status, for_model}` (+ `error`),
+ * while the panel keeps the full envelope. Without `for_model` (recorded samples),
+ * the compact data summary is sent instead.
+ */
+export function toolOutputForModel(env: EvidenceEnvelope): Record<string, unknown> {
+  let output: Record<string, unknown>;
+  if (typeof env.for_model === "string" && env.for_model.trim()) {
+    output = { status: env.status, for_model: env.for_model };
+  } else {
+    output = {
+      status: env.status,
+      data: env.data,
+      warnings: env.evidence.warnings,
+      evidence_summary: {
+        dataset_id: env.evidence.dataset_id,
+        cutoff: env.evidence.cutoff_raw,
+        unit: env.evidence.unit,
+        filters: env.evidence.filters,
+        cache_status: env.evidence.cache_status,
+        complete: env.evidence.complete,
+      },
+      note: SOURCE_NOTE,
+    };
+  }
+  if (env.error) output.error = { code: env.error.code, message: env.error.message };
+  return output;
 }
 
 // ── Helpers shared by the adapters ───────────────────────────────────────────

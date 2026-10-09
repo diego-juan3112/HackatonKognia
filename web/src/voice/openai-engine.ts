@@ -124,6 +124,10 @@ export class OpenAIRealtimeEngine extends RealtimeEngineBase {
     this.send({ type: "response.create" });
   }
 
+  protected sendNote(text: string): void {
+    this.sendUserText(text);
+  }
+
   protected sendGreeting(spokenBrief: string): void {
     // The figures of the greeting come from the live brief, never from the model (R-22).
     this.send({

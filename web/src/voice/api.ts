@@ -31,7 +31,7 @@ export interface ToolContext {
 }
 
 export interface RunToolOptions {
-  /** "Reconsultar" and the first query of a session always go live (docs/09 §6). */
+  /** Only "Reconsultar" forces a live query (docs/09 §6). */
   forceLive?: boolean;
 }
 
@@ -144,6 +144,33 @@ export async function fetchBrief(): Promise<{ brief: DatasetBrief; live: boolean
   } catch {
     // The cover page still needs something to draw; it is labelled as a recorded sample.
     return { brief: MOCK_BRIEF, live: false };
+  }
+}
+
+// ── Figure check (docs/10 §5) ────────────────────────────────────────────────
+
+export interface VerifyResult {
+  turn_id: string;
+  grounded: boolean;
+  unsupported: number[];
+  correction: string | null;
+}
+
+/** `POST /verify/answer`: checks the figures of an answer against its tool results. Null on any failure. */
+export async function verifyAnswer(body: { turn_id: string; text: string; tool_results: EvidenceEnvelope[] }): Promise<VerifyResult | null> {
+  if (USING_MOCKS) return null;
+  try {
+    const res = await apiFetch("/verify/answer", { method: "POST", body: JSON.stringify({ ...body, tool_results: body.tool_results.slice(-10) }) }, 4000);
+    if (!res.ok) return null;
+    const parsed = (await res.json()) as Partial<VerifyResult>;
+    return {
+      turn_id: String(parsed.turn_id ?? body.turn_id),
+      grounded: parsed.grounded !== false,
+      unsupported: Array.isArray(parsed.unsupported) ? parsed.unsupported.filter((n): n is number => typeof n === "number") : [],
+      correction: typeof parsed.correction === "string" ? parsed.correction : null,
+    };
+  } catch {
+    return null;
   }
 }
 

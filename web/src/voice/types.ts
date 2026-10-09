@@ -38,6 +38,10 @@ export interface VoiceEngine {
   /** After renewing the session or switching engines. */
   seed(context: ContextEnvelope): void;
   on<K extends keyof EngineEvents>(e: K, cb: (ev: EngineEvent<K>) => void): () => void;
+  /** Opens or closes the microphone mid-session, after the explicit voice consent (R-26). Optional. */
+  setMicEnabled?(on: boolean): Promise<void>;
+  /** Hands the engine a system note as a user turn so it answers it aloud (self-correction). Optional. */
+  sendSystemNote?(text: string): void;
 }
 
 // ── Event envelope ───────────────────────────────────────────────────────────
@@ -97,7 +101,13 @@ export interface TranscriptPayload {
   corrects?: string;
 }
 
-export type ToolName = "search_ips" | "get_ips_details" | "aggregate_ips" | "compare_ips" | "correct_context";
+/** Tools the console knows by name. */
+export type KnownToolName = "search_ips" | "get_ips_details" | "aggregate_ips" | "compare_ips" | "correct_context";
+/**
+ * Any tool the backend exposes. New tools (e.g. `verify_registration`, `area_profile`)
+ * pass through the bridge and render generically; the `string & {}` keeps autocompletion.
+ */
+export type ToolName = KnownToolName | (string & {});
 
 export interface ToolCallPayload {
   tool_call_id: string;
@@ -231,6 +241,8 @@ export interface EvidenceEnvelope {
   trace: { engine: string; soql: string; ms: number; rows: number };
   error: { code: string; message: string; retryable?: boolean } | null;
   next_cursor: string | null;
+  /** Grounded compact text built by the backend for the voice engine (docs/09 §5). */
+  for_model?: string;
   context_patch: Partial<CanonicalState> & Record<string, unknown>;
 }
 

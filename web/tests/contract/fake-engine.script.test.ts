@@ -73,7 +73,7 @@ describe("brief inicial (A-02, A-25)", () => {
     expect(first.payload).toMatchObject({ phase: "start", kind: "brief" });
     const text = ofType(events, "transcript").find((e) => e.generation_id === first.payload.generation_id && e.payload.final)!;
     expect(text.payload.text).toBe(brief.spoken_brief);
-    expect(text.payload.text).toMatch(/inteligencia artificial/i);
+    // The AI notice moved to the first answer (commit 006d6c1): the brief no longer carries it.
     expect(text.payload.text).toContain("9.320");
     expect(text.payload.text).toMatch(/noviembre de 2022/);
   });

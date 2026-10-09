@@ -306,3 +306,9 @@ svg.lucide {
     animation: none !important;
   }
 }
+
+/* One-line AI notice on the cover and the console. */
+.ai-badge {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}

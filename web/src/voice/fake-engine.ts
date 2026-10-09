@@ -35,6 +35,8 @@ export interface EngineDeps {
   getBrief(): Promise<DatasetBrief>;
   /** Session clock in ms; it keeps running across an engine switch (docs/08 §2, `t`). */
   now(): number;
+  /** False until the person pressed «Usar mi voz» (R-26): the microphone stays closed. Absent means allowed. */
+  micAllowed?: () => boolean;
 }
 
 export interface FakeEngineOptions {

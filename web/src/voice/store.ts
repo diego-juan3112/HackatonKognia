@@ -40,6 +40,8 @@ export interface Utterance {
   kind?: SpeechKind;
   /** Set when the agent was interrupted: only this part was actually heard. */
   delivered_text?: string;
+  /** Figures the backend could not find in the tool results of the turn (POST /verify/answer). */
+  unverified?: number[];
   /** Set when a later utterance corrected this one; the original text is kept. */
   correction?: { text: string; reason: string; t: number };
 }
@@ -151,8 +153,8 @@ function initialState(): ConsoleState {
     turns: [],
     notices: [],
     lastError: null,
-    // On by default (team decision); the switch turns it off. Audio is never stored (R-26).
-    voiceAnalysis: true,
+    // Off until the person presses «Usar mi voz» (R-26). Audio is never stored.
+    voiceAnalysis: false,
     voiceMode: "engine",
     voiceModes: ["engine"],
     speakingKind: null,
@@ -451,6 +453,14 @@ export function setVoiceModes(modes: VoiceMode[]): void {
   state.voiceModes = modes.includes("engine") ? modes : ["engine", ...modes];
   if (!state.voiceModes.includes(state.voiceMode)) state.voiceMode = "engine";
   notify("meta");
+}
+
+/** Marks figures of an agent utterance as not verified against the evidence. */
+export function markUnverified(utterance_id: string, numbers: number[]): void {
+  const u = state.utterances.find((x) => x.id === utterance_id);
+  if (!u || numbers.length === 0) return;
+  u.unverified = numbers;
+  notify("transcript");
 }
 
 export function putEvidence(env: EvidenceEnvelope): void {

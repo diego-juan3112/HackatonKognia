@@ -125,6 +125,10 @@ export class GeminiLiveEngine extends RealtimeEngineBase {
     this.send({ realtimeInput: { text } });
   }
 
+  protected sendNote(text: string): void {
+    this.send({ clientContent: { turns: [{ role: "user", parts: [{ text }] }], turnComplete: true } });
+  }
+
   protected sendGreeting(spokenBrief: string): void {
     // The figures of the greeting come from the live brief, never from the model (R-22).
     this.send({ realtimeInput: { text: `${NOTE} Preséntate ahora diciendo exactamente este texto, sin añadir ni cambiar cifras: «${spokenBrief}»` } });

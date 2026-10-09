@@ -23,17 +23,44 @@ import IconBank from "../components/IconBank.astro";
   import { panel } from "../scripts/dom";
   import * as controller from "../voice/controller";
 
+  /** Hidden this long (another tab, phone locked) ends the conversation. */
+  const HIDDEN_STOP_MS = 60_000;
+
   panel("console", () => {
+    // Re-entering the console starts clean: a session left behind is never resumed.
+    controller.restart();
+
+    // Leaving the console ends the conversation (docs/08 §10): socket, mic, player and timers.
+    let hiddenTimer: ReturnType<typeof setTimeout> | undefined;
+    const leave = (): void => controller.leave();
+    const onVisibility = (): void => {
+      clearTimeout(hiddenTimer);
+      if (document.visibilityState === "hidden") hiddenTimer = setTimeout(leave, HIDDEN_STOP_MS);
+    };
+    // Client-side navigation (links, back/forward): before the next page is even fetched.
+    document.addEventListener("astro:before-preparation", leave);
+    window.addEventListener("pagehide", leave);
+    document.addEventListener("visibilitychange", onVisibility);
+
     // The cover page links here with ?iniciar=1 or ?q=…; consume them once.
     const url = new URL(location.href);
     const q = url.searchParams.get("q");
     const autostart = url.searchParams.has("iniciar");
-    if (!q && !autostart) return;
-    url.searchParams.delete("q");
-    url.searchParams.delete("iniciar");
-    history.replaceState(history.state, "", url);
-    if (q) controller.sendText(q);
-    else void controller.start();
+    if (q || autostart) {
+      url.searchParams.delete("q");
+      url.searchParams.delete("iniciar");
+      history.replaceState(history.state, "", url);
+      if (q) controller.sendText(q);
+      else void controller.start();
+    }
+
+    return () => {
+      clearTimeout(hiddenTimer);
+      document.removeEventListener("astro:before-preparation", leave);
+      window.removeEventListener("pagehide", leave);
+      document.removeEventListener("visibilitychange", onVisibility);
+      leave();
+    };
   });
 </script>
 

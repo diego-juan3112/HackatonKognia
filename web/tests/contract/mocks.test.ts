@@ -48,7 +48,7 @@ describe("mocks/brief.json — cifras doradas", () => {
   });
 
   it("el brief hablado declara que es una IA y dice las mismas cifras y el corte (A-02, A-25)", () => {
-    expect(brief.spoken_brief).toMatch(/inteligencia artificial/i);
+    // The AI notice moved to the first answer (commit 006d6c1): the brief no longer carries it.
     expect(brief.spoken_brief).toContain("9.320");
     expect(brief.spoken_brief).toContain("10.921");
     expect(brief.spoken_brief).toMatch(/noviembre de 2022/);
