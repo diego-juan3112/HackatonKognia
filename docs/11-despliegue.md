@@ -41,11 +41,21 @@ Lectura de variables **solo** en `src/config.py` (R-05); `LANGSMITH_*` las lee l
 
 ## 3. Backend en Vercel
 
-- **Dependencias mínimas** (sin `torch`, `sentence-transformers` ni `psycopg`): `fastapi`, `httpx`, `pydantic-settings`, `pyyaml`, `langgraph`, `langchain-core`, `langchain-google-genai`, `langchain-openai`. Paquete Python ≤ 500 MB; `vercel.json` excluye `tests/`, `docs/`, `spikes/`.
+- **Dependencias mínimas** (sin `torch`, `sentence-transformers` ni `psycopg`): `fastapi`, `httpx`, `pydantic-settings`, `pyyaml`, `langgraph`, `langchain-core` y `uvicorn` (solo contenedor/local). El app de voz llama a Gemini, OpenAI y Cartesia con `httpx`: **no** usa `langchain-google-genai` ni `langchain-openai`. Medido el 2026-10-09: `site-packages` de ~63 MB (límite 500 MB) e importación de `api.app_voice` en ~1 s.
+- **Dónde está cada cosa:** `requirements.txt` = runtime mínimo de Reto 01; `requirements-base.txt` = `-r requirements.txt` + base genérica + pruebas (desarrollo: `pip install -r requirements-base.txt`). `pyproject.toml` repite el runtime mínimo como lista **estática** en `[project].dependencies` porque Vercel, si hay `pyproject.toml` y `requirements.txt`, instala desde `pyproject.toml` (con `uv`). **Las dos listas se mantienen iguales.**
+- **Entrypoint:** `[tool.vercel] entrypoint = "src.api.app_voice:app"` en `pyproject.toml` (mecanismo documentado por Vercel). `vercel.json` fija `regions: ["iad1"]`, `maxDuration` 60 s y `excludeFiles` (`tests/`, `docs/`, `web/`, `migrations/`, `infra/`, `scripts/`, `spikes/`, `.venv*`, `.env*`); `.vercelignore` evita subir `.env` y lo mismo con `vercel deploy`. El bundle incluye `src/`, `config/` y `data/lexicon.json` (las rutas salen de `src/config.py`, relativas a la raíz).
+- **Despliegue del proyecto `api` (carril B, desde la raíz del worktree):**
+  ```bash
+  npx vercel login
+  npx vercel link                      # proyecto "api", raíz "." (no web/)
+  npx vercel env add GEMINI_API_KEY    # y lo mismo para: OPENAI_API_KEY, DATOS_GOV_APP_TOKEN,
+                                       # SESSION_SIGNING_KEY, ALLOWED_ORIGINS, CARTESIA_API_KEY, CARTESIA_VOICE_ID
+  npx vercel deploy                    # preview; producción sale de main (D-19)
+  ```
 - **Límites a recordar:** cuerpo de petición y respuesta **4,5 MB** (los recortes WAV de ≤ 30 s caben, [08](08-contrato-voz-en-vivo.md) §4); duración máxima 300 s en Hobby (las llamadas del reto duran segundos); memoria 2 GB / 1 vCPU.
 - **Región:** la predeterminada es `iad1`; medir una alternativa más cercana a Colombia en G1.
 - **Calentamiento:** el brief ([09](09-datos-en-vivo-datos-gov-co.md) §8) abre la conexión a la fuente; el primer arranque en frío se mide en G1.
-- **Dependencias — primer obstáculo de G1:** hoy `pyproject.toml` declara `dynamic = ["dependencies"]` leyendo `requirements.txt`, que incluye `sentence-transformers` (torch), `psycopg` y `langgraph-checkpoint-postgres`. Vercel instalaría todo eso. El carril B lo resuelve en G1 con una de estas salidas: (1) `requirements.txt` pasa a ser el conjunto mínimo de Reto 01 y lo pesado se mueve a `requirements-base.txt` (se actualizan `pyproject.toml` y los comandos de [01](01-arquitectura.md) §9); (2) un proyecto de Vercel con raíz en un subdirectorio y su propio `requirements.txt` (verificar que el paquete incluya `src/`); (3) plan B (contenedor).
+- **Dependencias — resuelto en G1 con la salida (1):** `requirements.txt` es el conjunto mínimo de Reto 01 y lo pesado (E5, Postgres, `langchain-google-genai`, pruebas) pasó a `requirements-base.txt`; `pyproject.toml` dejó de leer `requirements.txt` de forma dinámica. Comandos en [01](01-arquitectura.md) §9.
 - **Tope de 20 min (D-15):** si no empaqueta o el arranque en frío es inaceptable, se pasa al plan B.
 
 ## 4. Frontend en Vercel
@@ -56,8 +66,10 @@ HTTPS es obligatorio para el micrófono; los previews de rama sirven para probar
 ## 5. Plan B: contenedor
 
 El mismo backend corre en un contenedor sin cambiar código; solo cambia `PUBLIC_API_URL`.
-El `Dockerfile` actual está **desactualizado** para Reto 01: debe copiar `src/`, `config/` y `data/`,
-instalar solo las dependencias mínimas (sin E5) y arrancar `uvicorn api.app_voice:app`. Hosts
+El `Dockerfile` (Python 3.12-slim, usuario sin privilegios) instala solo `requirements.txt` (sin E5),
+copia `src/`, `config/` y `data/` y arranca `uvicorn api.app_voice:app --app-dir src` en `${PORT:-8000}`;
+`.dockerignore` deja fuera `.env`, `tests/`, `docs/` y `web/`. Las claves se pasan al ejecutar:
+`docker build -t kognia-api .` y `docker run --rm -p 8000:8000 --env-file .env kognia-api`. Hosts
 posibles: Azure Container Apps (regiones permitidas por Azure for Students: `spaincentral`,
 `westus`, `canadacentral`, `belgiumcentral`, `chilecentral`), Render o Railway. **`terraform apply` es
 siempre manual (R-21).** Mantener una instancia caliente durante el jurado.
