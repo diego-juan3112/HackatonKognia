@@ -6,7 +6,36 @@ Si se reutiliza el repo, estas condiciones viajan con los archivos.
 
 Verificado el 09/10/2026.
 
-## `avatar-sample-a.vrm` — AvatarSample_A (modelo por defecto)
+## `avatar-sample-c.vrm` — AvatarSample_C (modelo por defecto, masculino)
+
+| | |
+|---|---|
+| Autor | pixiv Inc. (VRoid Project). Metadatos del archivo: `author: "VRoid"`, `title: "AvatarSample_C"`, exportado con `VRoidStudio-0.14.0` |
+| Formato | VRM 0.x, 13 132 268 bytes |
+| SHA-256 | `395d5b04696e888f07bc856ae01bf72a974b7e773132c7443dc59d1688045b8a` |
+| Página oficial del modelo | https://hub.vroid.com/en/characters/1248981995540129234/models/8640547963669442173 |
+| Condiciones de uso (fuente oficial) | https://vroid.pixiv.help/hc/en-us/articles/4402394424089 (artículo "VRoidPreset_A - Z"; enlaza AvatarSample_A, _B y _C) |
+| Resumen oficial de modelos de muestra | https://vroid.pixiv.help/hc/en-us/articles/4402614652569 (lista AvatarSample_C entre los "models with particular conditions of use") |
+| Copia descargada de | https://github.com/madjin/vrm-samples (`vroid/stable/AvatarSample_C.vrm`), sin modificar |
+| Crédito exigido | Ninguno ("There is no need to credit the original creator") |
+
+**Misma licencia que AvatarSample_A: no es CC0.** Se aplican exactamente las
+condiciones y conductas prohibidas citadas en la sección de AvatarSample_A,
+más abajo. Las leí en la fuente oficial el 09/10/2026 (texto fechado por pixiv
+"Updated on December 26th, 2024"). Redistribuir el `.vrm` gratis en un
+repositorio público está permitido; lo prohibido es declararlo CC0, cobrar por
+él o usarlo para un servicio de creación de personajes.
+
+Los metadatos embebidos no sirven por sí solos como licencia: el archivo declara
+`licenseName: "Other"` sin URL (`allowedUserName: "Everyone"`,
+`commercialUssageName: "Allow"`). VRM 0.x no tiene campo `allowRedistribution`;
+el permiso de redistribución sale del artículo de pixiv, no del archivo.
+
+Misma nota de procedencia que AvatarSample_A: tomado de un espejo público en
+GitHub porque VRoid Hub exige iniciar sesión; **no se comparó byte a byte**
+contra la descarga oficial.
+
+## `avatar-sample-a.vrm` — AvatarSample_A (alternativa, femenino)
 
 | | |
 |---|---|

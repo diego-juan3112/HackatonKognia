@@ -81,9 +81,9 @@ export class AvatarError extends Error {
   }
 }
 
-const DEFAULT_MODEL_FILE = "avatars/avatar-sample-a.vrm";
+const DEFAULT_MODEL_FILE = "avatars/avatar-sample-c.vrm";
 /** Size of the bundled model, used when the server sends no Content-Length. */
-const DEFAULT_MODEL_BYTES = 15_096_320;
+const DEFAULT_MODEL_BYTES = 13_132_268;
 
 // --- Tuning -----------------------------------------------------------------
 
