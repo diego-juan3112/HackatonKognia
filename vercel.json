@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["iad1"],
+  "functions": {
+    "src/api/app_voice.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,docs/**,web/**,migrations/**,infra/**,scripts/**,spikes/**,.venv*/**,.claude/**,**/__pycache__/**,.env,.env.*}"
+    }
+  }
+}
