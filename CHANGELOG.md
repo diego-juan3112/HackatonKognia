@@ -5,6 +5,22 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Integración en `main` (2026-10-09 ≈ 14:15) — backend completo + front de los carriles A y B
+- **Front:** consentimiento explícito «Usar mi voz» (R-26), la conversación se corta al salir de la consola,
+  transcripción parcial del agente, `for_model` como salida de herramienta, sin `forceLive` en la primera
+  consulta, la pregunta escrita mientras conecta ya no se pierde, regla de 1 s contra el ruido (también con
+  voz clonada), verificación de cifras con autocorrección, herramientas en el panel de administrador, un solo
+  `POST /sessions`, aviso único con «Reintentar» si el backend cae. Voz clonada con Cartesia (carril A).
+- **Backend:** prompt `reto01-ips-v8` (agente con herramientas, trato de usted, contacto de hasta 5 sedes,
+  continúa tras una pausa), VAD 0,65 con `noise_reduction` y sin corte automático, `/health` con `tools`,
+  `default_voice_mode` y `cloned_voice_engines`, `.gitignore` para cualquier `.env.*`.
+- **Verificado:** 155 pruebas de backend y 134 de front en verde; build estático; prueba en caliente en Edge
+  (pregunta durante el saludo → `aggregate_ips` desde la precarga → «97.036 camas en total», voz clonada con
+  148 trozos de Cartesia, `for_model` entregado al motor, 0 errores); ráfagas de ruido de 0,3 s como
+  micrófono: 0 detecciones de voz en OpenAI; 8 evaluadores simultáneos sin fugas entre usuarios.
+- **Pendiente:** despliegue en Vercel (D-15) y smoke contra la URL pública; A-21 con voz humana; regla de 1 s
+  con ruido real de micrófono; Gemini en el navegador.
+
 ### Added — Reto 01, herramientas de agente (2026-10-09, rama `feat/reto-01-api-tools`, contrato datos `2026-10-09.3`)
 - `verify_registration`, `area_profile`, `compare_areas` y `dataset_info` en `POST /tools/{nombre}` y en las
   declaraciones de herramientas ([09](docs/09-datos-en-vivo-datos-gov-co.md) §4). Porcentajes, diferencias y
