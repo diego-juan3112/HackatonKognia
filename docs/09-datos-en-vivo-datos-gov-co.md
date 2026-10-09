@@ -151,6 +151,15 @@ Toda herramienta responde este sobre; solo la evidencia validada puede dar cifra
 
 El ejemplo ilustra la forma; las cifras reales salen siempre de la consulta.
 
+**Campos añadidos (contrato `.2`, aditivos):** `evidence` y `trace` están **siempre** presentes
+(también en `invalid`/`ambiguous`); `traces` lista cada consulta cuando hubo varias; `data.unit` va
+en español para mostrar («prestadores», «camas») y `evidence.unit` como código; y **`for_model`**:
+texto determinista que el cliente entrega al motor **como salida de la función** (en lugar de los
+datos crudos). Dice las cifras exactas con unidad y corte, las advertencias en palabras, qué hacer
+ante `ambiguous`/`unavailable`/`empty` y cierra con «cualquier dato que no aparezca aquí no se
+sabe». Es la primera barrera contra la alucinación (R-22); la segunda es el verificador de cifras
+(`POST /verify/answer`, [10](10-modelos-afecto-y-recuperacion.md) §1).
+
 | Campo | Significado |
 |---|---|
 | `status` | `ok` · `empty` · `ambiguous` · `unavailable` · `invalid`. **`unavailable` nunca se convierte en `empty`** |

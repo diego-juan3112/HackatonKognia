@@ -17,7 +17,7 @@ independientes de los proveedores: cambiar quién juega un rol es **configuraci�
 | **Analista de afecto** | Estima sentimiento y emoción por texto y por voz | `fast` = Gemini multimodal | No (≤ 3 s tras el enunciado) |
 | Política de estilo | Decide `directo`/`cálido`/`didáctico`/`neutro` | Determinista (YAML + suavizado) | No |
 | Redactor del brief | Plantilla con cifras en vivo ([09](09-datos-en-vivo-datos-gov-co.md) §8) | Sin LLM | No |
-| Verificador de cifras | Compara las cifras dichas con los resultados de herramientas | Backlog | No |
+| Verificador de cifras | Compara las cifras dichas con los resultados de herramientas (`POST /verify/answer`, `services/ips/verify.py`) | Determinista, sin LLM | No (después de hablar) |
 
 ```yaml
 # config/models.yaml  (planeado; los IDs se rellenan tras la prueba autenticada)
@@ -212,12 +212,19 @@ desde el turno siguiente. La interfaz muestra el estilo vigente con su motivo y 
 
 - Son **observaciones inciertas**; la preferencia explícita y el éxito de la tarea mandan.
 - Sin diagnóstico, sin rasgos estables, sin afirmaciones clínicas.
-- **Consentimiento** visible para el análisis de voz; sin él, solo texto. El audio **no se guarda**: el recorte vive en memoria durante la petición y se descarta.
+- **Análisis activo por defecto** (decisión del equipo, 2026-10-09; reemplaza el diálogo de consentimiento): un **indicador visible** («análisis de voz activo») y un **interruptor para apagarlo**; apagado, solo texto (`voice_consent = false`). El audio **no se guarda**: el recorte vive en memoria durante la petición y se descarta. *Riesgo registrado:* la voz analizada puede considerarse dato biométrico (Ley 1581, datos sensibles) y el recorte se envía a Google; el indicador visible es la mitigación mínima.
+- **Aviso de IA mínimo** (se mantiene, sin diálogo): el agente dice que es una IA al empezar (prompt) y hay un distintivo visible de una línea; con la voz clonada, «voz sintética» (D-20). Lo exigen RETO-P1/P3 (F-01) y A-25.
 - **UE:** el AI Act exige avisar que se interactúa con una IA (art. 50) y la inferencia de emociones a partir de datos biométricos está **prohibida en entornos laborales y educativos** (art. 5.1.f) y exige transparencia en otros (fuentes secundarias; no es asesoría legal). Antes de cualquier uso comercial en la UE hay que evaluarlo con asesoría jurídica.
 
-## 7. Instrucciones del agente (prompt `reto01-ips-v1`)
+## 7. Instrucciones del agente (prompt `reto01-ips-v2` vigente)
 
-Se versionan y se evalúan; viven en `config/domains/reto01_ips.yaml` (planeado). Los motores las reciben al crear la sesión.
+Se versionan y se evalúan; viven en `config/domains/reto01_ips.yaml`, que **manda** sobre el texto de
+abajo. Los motores las reciben al crear la sesión. **v2 (2026-10-09), contra la alucinación:** mundo
+cerrado (solo vale lo que devuelve una herramienta en esta conversación; nada de conocimiento general
+sobre hospitales o ciudades), lista explícita de lo que la fuente **no** contiene (disponibilidad,
+cercanía, horarios, médicos o personal, servicios, calidad, precios, EPS, datos posteriores a 2022),
+`unavailable` y `ambiguous` nunca se contestan de memoria, y las cifras se repiten tal como vienen en
+`for_model`. Se mide con `scripts/eval_grounding.py` contra el motor real. Texto de la v1, como referencia:
 
 ```
 Eres un asistente de inteligencia artificial que conversa por voz, en español colombiano, sobre el conjunto
