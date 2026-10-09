@@ -64,14 +64,26 @@ export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs =
 
 // ── Health (docs/08 §3) ──────────────────────────────────────────────────────
 
+let defaultVoice: VoiceMode = "engine";
+let clonedEngines: string[] | null = null;
+
+/** Voice the backend proposes first (`default_voice_mode`, additive in contract `.2`). */
+export const defaultVoiceMode = (): VoiceMode => defaultVoice;
+/** Engines that can use the cloned voice according to the backend, or null when it does not say. */
+export const clonedVoiceEngines = (): string[] | null => clonedEngines;
+
 /** Voices the backend offers. Without a backend the double can show both; on any failure, only the engine voice. */
 export async function fetchVoiceModes(): Promise<VoiceMode[]> {
   if (USING_MOCKS) return ["engine", "cloned"];
   try {
     const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(4000) });
     if (!res.ok) return ["engine"];
-    const body = (await res.json()) as { voice_modes?: unknown };
+    const body = (await res.json()) as { voice_modes?: unknown; default_voice_mode?: unknown; cloned_voice_engines?: unknown };
     const modes = Array.isArray(body.voice_modes) ? body.voice_modes.filter((m): m is VoiceMode => m === "engine" || m === "cloned") : [];
+    // The person wants to hear the cloned voice: it is the default whenever the backend offers it,
+    // unless the backend explicitly proposes the engine voice.
+    defaultVoice = modes.includes("cloned") && body.default_voice_mode !== "engine" ? "cloned" : "engine";
+    clonedEngines = Array.isArray(body.cloned_voice_engines) ? body.cloned_voice_engines.filter((e): e is string => typeof e === "string") : null;
     return modes.includes("engine") ? modes : ["engine", ...modes];
   } catch {
     return ["engine"];

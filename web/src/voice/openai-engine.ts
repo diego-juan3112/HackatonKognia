@@ -40,6 +40,7 @@ interface ResponseState {
 export class OpenAIRealtimeEngine extends RealtimeEngineBase {
   readonly id = "openai" as const;
   protected readonly inputRate = 24_000 as const;
+  protected override readonly supportsClonedVoice = true;
 
   private ws: WebSocket | null = null;
   private ready = false;
@@ -173,6 +174,13 @@ export class OpenAIRealtimeEngine extends RealtimeEngineBase {
   protected cancelGeneration(generationId: string, info: CancelInfo): void {
     const state = this.responses.get(generationId);
     if (!info.byProvider && this.activeResponse === generationId) this.send({ type: "response.cancel" });
+    // Cloned voice: the provider wrote the whole answer but only part was heard (docs/08 §15.4).
+    if (info.deliveredText !== undefined && state?.done && !state.hadCalls) {
+      this.send({
+        type: "conversation.item.create",
+        item: { type: "message", role: "system", content: [{ type: "input_text", text: "[Interrumpido] De tu última respuesta la persona solo escuchó: «" + info.deliveredText + "»" }] },
+      });
+    }
     // The conversation keeps only the audio that was really played (docs/08 §6.3).
     if (!state?.itemId) return;
     const playedMs = Math.max(0, Math.floor(info.playedMs));
@@ -232,8 +240,12 @@ export class OpenAIRealtimeEngine extends RealtimeEngineBase {
       case "response.output_audio_transcript.done":
         this.agentTranscript(responseId, str(msg.transcript), { final: true });
         break;
+      // Text-only session (cloned voice): this text is the answer and goes to the synthesizer.
       case "response.output_text.delta":
-        this.agentTranscript(responseId, str(msg.delta), { final: false, append: true });
+        this.agentText(responseId, str(msg.delta), { final: false });
+        break;
+      case "response.output_text.done":
+        this.agentText(responseId, "", { final: true });
         break;
       case "response.function_call_arguments.done": {
         const state = this.responses.get(responseId);
