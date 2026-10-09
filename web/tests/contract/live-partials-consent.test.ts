@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { micAcquire } = vi.hoisted(() => ({ micAcquire: vi.fn(async () => undefined) }));
+const { micAcquire, duck } = vi.hoisted(() => ({ micAcquire: vi.fn(async () => undefined), duck: vi.fn() }));
 vi.mock("../../src/voice/audio/mic-tap", () => {
   class MicError extends Error {
     code: string;
@@ -25,6 +25,7 @@ vi.mock("../../src/voice/audio/player", () => {
     enqueue: () => 0,
     playedMs: () => 0,
     audibleGeneration: null,
+    duck,
   };
   return { getPlayer: () => player };
 });
@@ -66,7 +67,19 @@ class TestEngine extends RealtimeEngineBase {
   }
   protected sendSeed(): void {}
   protected sendStyle(): void {}
-  protected cancelGeneration(): void {}
+  cancelled: string[] = [];
+  protected cancelGeneration(id: string): void {
+    this.cancelled.push(id);
+  }
+  userStop(key: string): void {
+    this.userSpeechStopped(key);
+  }
+  audio(id: string): void {
+    this.agentAudio(id, new Int16Array(2400));
+  }
+  done(id: string): void {
+    this.generationDone(id);
+  }
   // Expose the provider reducers to the test.
   userStart(key: string): void {
     this.userSpeechStarted(key);
@@ -98,6 +111,7 @@ function make(micAllowed?: () => boolean): { engine: TestEngine; events: AnyEngi
   const events: AnyEngineEvent[] = [];
   engine.on("transcript", (ev) => events.push(ev as AnyEngineEvent));
   engine.on("error", (ev) => events.push(ev as AnyEngineEvent));
+  engine.on("interrupted", (ev) => events.push(ev as AnyEngineEvent));
   return { engine, events };
 }
 
@@ -146,6 +160,57 @@ describe("live partial transcripts (docs/08 §2)", () => {
     const agent = store.getState().utterances.filter((u) => u.role === "agent");
     expect(agent).toHaveLength(1);
     expect(agent[0]).toMatchObject({ text: "Hay 12 IPS.", final: true });
+  });
+});
+
+describe("1-second barge-in rule (ambient noise)", () => {
+  it("voice shorter than 1 s while the agent speaks ducks it and does not cut it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, events } = make(() => false);
+      await engine.connect({ conversationId: "n1" });
+      engine.agentStart("r1");
+      engine.audio("r1");
+      duck.mockClear();
+      engine.userStart("noise-1");
+      expect(duck).toHaveBeenLastCalledWith(0.3);
+      await vi.advanceTimersByTimeAsync(400);
+      engine.userStop("noise-1");
+      expect(duck).toHaveBeenLastCalledWith(1);
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(events.some((e) => e.type === "interrupted")).toBe(false);
+      expect(engine.cancelled).toEqual([]);
+      // The provider answers the blip: its transcript has < 2 words, so that answer is dropped.
+      engine.agentStart("r2");
+      engine.audio("r2");
+      engine.agentText("r2", "¿Decías algo?", true);
+      engine.userText("noise-1", "eh", true);
+      expect(engine.cancelled).toEqual(["r2"]);
+      expect(transcripts(events).some((t) => t.text === "eh" || t.text === "¿Decías algo?")).toBe(false);
+      await engine.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("voice that lasts 1 s cuts the agent and reports what was heard", async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, events } = make(() => false);
+      await engine.connect({ conversationId: "n2" });
+      engine.agentStart("r1");
+      engine.audio("r1");
+      engine.agentText("r1", "Hay muchas IPS en el país", false);
+      engine.userStart("voice-1");
+      await vi.advanceTimersByTimeAsync(1001);
+      expect(events.some((e) => e.type === "interrupted")).toBe(true);
+      expect(engine.cancelled).toContain("r1");
+      engine.userText("voice-1", "¿Y en Cali?", true);
+      expect(transcripts(events).at(-1)).toMatchObject({ role: "user", text: "¿Y en Cali?", final: true });
+      await engine.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

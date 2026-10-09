@@ -82,6 +82,17 @@ export class PcmPlayer {
     return this.context.state === "running";
   }
 
+  /** Lowers (or restores, with 1) the output volume smoothly: used while a barge-in is being confirmed. */
+  duck(level: number): void {
+    const gain = this.output.gain;
+    try {
+      gain.cancelScheduledValues(this.context.currentTime);
+      gain.setTargetAtTime(Math.max(0, Math.min(1, level)), this.context.currentTime, 0.03);
+    } catch {
+      gain.value = level;
+    }
+  }
+
   /** The current owner receives the callbacks; the returned function releases them. */
   attach(handlers: PlayerHandlers): () => void {
     this.handlers = handlers;
