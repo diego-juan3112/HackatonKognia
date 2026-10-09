@@ -117,10 +117,13 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
     @app.get("/health")
     async def health(c: VoiceContainer = Depends(container)) -> dict[str, Any]:
         cached = app.state.health_cache
-        if cached is None or time.monotonic() - cached[0] > 30:
+        # A success is remembered 30 s; a failure only 5 s, so a cold or slow first
+        # ping does not report "degraded" for half a minute.
+        ttl = 30 if cached and cached[1].get("ok") else 5
+        if cached is None or time.monotonic() - cached[0] > ttl:
             t0 = time.perf_counter()
             try:  # datos.gov.co is free; no paid provider is called here (docs/03)
-                await c.dataset.query("SELECT count(*) AS rows", deadline=Deadline(3.0))
+                await c.dataset.query("SELECT count(*) AS rows", deadline=Deadline(4.5))
                 source = {"ok": True, "ms": int((time.perf_counter() - t0) * 1000)}
             except DatasetUnavailable as exc:
                 source = {"ok": False, "error": exc.code}

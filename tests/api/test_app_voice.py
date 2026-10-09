@@ -64,6 +64,19 @@ def test_health_is_public_and_announces_voice_modes(client):
     assert body["voice_modes"] == ["engine", "cloned"] and set(body["engines"]) == {"openai", "gemini"}
 
 
+def test_health_failure_is_not_cached_for_long():
+    from tests.doubles.fake_dataset import unavailable
+
+    c = _container()
+    flaky = FakeDataset().on("count(*) AS rows", unavailable("TIMEOUT"))
+    c.dataset = flaky
+    with TestClient(create_app(lambda: c)) as tc:
+        assert tc.get("/health").json()["status"] == "degraded"
+        flaky._answers = [("count(*) AS rows", [{"rows": "41427"}])]
+        tc.app.state.health_cache = (tc.app.state.health_cache[0] - 6, tc.app.state.health_cache[1])
+        assert tc.get("/health").json()["status"] == "ok"
+
+
 def test_protected_routes_need_a_signed_session(client):
     r = client.get("/dataset/brief")
     assert r.status_code == 401 and r.json()["error"]["code"] == "SESSION_EXPIRED" and "trace_id" in r.json()
