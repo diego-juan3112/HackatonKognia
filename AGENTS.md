@@ -10,7 +10,7 @@ datos.gov.co, desplegado en Vercel. El núcleo genérico sigue intacto y **Reto 
 no usa base de datos, RAG, embeddings ni cédula**: su contexto es la API en vivo.
 Qué se construye y cómo se acepta: [docs/07](docs/07-reto-01-especificacion.md).
 Cómo trabajamos de a dos: [docs/12](docs/12-guia-de-trabajo-2-personas.md).
-**Los contratos vigentes son `docs/07` a `docs/13`**; [docs/sdd_ips](docs/sdd_ips/README.md)
+**Los contratos vigentes son `docs/07` a `docs/13`**; docs/sdd_ips
 es insumo (si algo choca, manda `docs/07–13`).
 
 ## Antes de tocar, lee
@@ -21,7 +21,7 @@ es insumo (si algo choca, manda `docs/07–13`).
 | Crear o mover archivos, tocar el grafo o un nodo | [docs/01-arquitectura.md](docs/01-arquitectura.md) |
 | Agregar o cambiar un proveedor (LLM, voz, datos) o un puerto | [docs/02-puertos.md](docs/02-puertos.md) |
 | Tocar rutas HTTP, respuestas o errores | [docs/03-api.md](docs/03-api.md) |
-| Tocar la base genérica de ingesta, embeddings o recuperación (**no aplica a Reto 01**) | [docs/04-rag.md](docs/04-rag.md) |
+| Tocar la base genérica de ingesta, embeddings o recuperación (**no aplica a Reto 01**) | docs/04-rag.md |
 | Escribir o correr pruebas | [docs/05-pruebas.md](docs/05-pruebas.md) |
 | Hacer commit, PR o agregar herramientas | [docs/06-flujo-y-convenciones.md](docs/06-flujo-y-convenciones.md) |
 | Tocar voz en vivo, motores, audio, interrupciones o la interfaz de conversación | [docs/08-contrato-voz-en-vivo.md](docs/08-contrato-voz-en-vivo.md) |
@@ -46,7 +46,7 @@ es insumo (si algo choca, manda `docs/07–13`).
 | R-09 | Cada puerto tiene un doble en memoria; los dobles viven solo en `tests/doubles/` (y `web/mocks/` en el cliente). | [02](docs/02-puertos.md) |
 | R-10 | No agregar dependencias fuera del stack sin discutirlo; las de Reto 01 se anotan en `docs/00` §2 al implementarlas. | [00](docs/00-contexto-y-decisiones.md) §2 |
 | R-11 | No usar plugins, skills o MCP no registrados. | [06](docs/06-flujo-y-convenciones.md) |
-| R-12 a R-15 | *(Base genérica; no aplican a Reto 01.)* Ingesta en un comando, cargadores intercambiables, recuperación solo vía `RetrievalPort`, dimensión 768 fija. | [04](docs/04-rag.md) |
+| R-12 a R-15 | *(Base genérica; no aplican a Reto 01.)* Ingesta en un comando, cargadores intercambiables, recuperación solo vía `RetrievalPort`, dimensión 768 fija. | 04 |
 | R-16 a R-19 | `pytest` sin red ni credenciales (aplica también a Reto 01); integración solo en bases `*_test` y la cédula completa nunca llega al LLM (base genérica). | [05](docs/05-pruebas.md) |
 | R-20 | Todo cambio de feature se registra en `CHANGELOG.md` con fecha y versión. | [06](docs/06-flujo-y-convenciones.md) |
 | R-21 | `terraform apply` siempre manual, nunca desde CI. | [06](docs/06-flujo-y-convenciones.md) |

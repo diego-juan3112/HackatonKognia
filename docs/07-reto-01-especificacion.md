@@ -20,7 +20,7 @@ con baja latencia. El jurado lo ejecuta desde la URL en 10 minutos (guion P1–P
 ## 2. Fuentes y supuestos
 
 Fuentes: las cinco capturas del reto, las tres transcripciones del arranque, el libro
-`V2.xlsx` (leído por el paquete [sdd_ips](sdd_ips/README.md)) y ese mismo paquete.
+`V2.xlsx` (leído por el paquete sdd_ips) y ese mismo paquete.
 
 **Supuestos confirmados por el equipo el 2026-10-09:**
 

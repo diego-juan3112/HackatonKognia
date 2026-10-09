@@ -31,7 +31,7 @@ Qué nos distingue, qué copiamos de Europa y qué queda para después. Los íte
 | B-01 | Recuperación híbrida de entidades con pgvector | P2, solo si se reintroduce base de datos | Embeddings versionados, filtros geográficos, recall medido frente al léxico, sin regresión en agregados; nunca mezclar espacios de embedding | 2–4 h |
 | B-02 | Comparación en sombra Gemini/OpenAI | P1 tras la Puerta 2 | Mismo contexto y evidencia, muestreo ≤ 10% con consentimiento, sin ejecutar herramientas, informe y presupuesto | 1–2 h |
 | B-03 | Perfiles Claude y Grok | P2 tras B-02 | Chequeo de capacidades, traducción de herramientas por proveedor, misma aceptación, costo y latencia medidos | 2–4 h |
-| B-04 | Motor 3 en cascada (STT del navegador + `/v1/turns` + TTS) | P1 si falla un motor en vivo | Contrato de [sdd_ips/03](sdd_ips/03_api_and_voice.md); reutiliza la demo de la rama `spike/demo-voz-avatar`; mismas pruebas A-xx | 3–5 h |
+| B-04 | Motor 3 en cascada (STT del navegador + `/v1/turns` + TTS) | P1 si falla un motor en vivo | Contrato de sdd_ips/03; reutiliza la demo de la rama `spike/demo-voz-avatar`; mismas pruebas A-xx | 3–5 h |
 | B-05 | Espejo paginado y refresco de la fuente | P2, solo si se reconsidera un snapshot | IDs estables, reconciliación de conteos y versión, *upsert* idempotente, promoción atómica | 1–3 h |
 | B-06 | Ciclo de evaluación del feedback revisado | P1 | Taxonomía de errores, casos anonimizados, versión de prompt, reporte de regresión y reversión ([10](10-modelos-afecto-y-recuperacion.md) §5) | 1–2 h |
 | B-07 | Diarización robusta de varias voces humanas | P1 | Evaluar Gemini 3.5 Transcribe, Deepgram y Azure; medir la precisión por separado de los roles | 2–4 h |

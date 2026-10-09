@@ -1,25 +1,7 @@
-"""In-memory stand-ins for every port that touches the outside world.
+"""In-memory stand-ins for every port that touches the outside world (R-09).
 
-Rule R-09 requires each port to have one, and R-16 requires the
-default suite to run with no credentials, no network and no database. These are
-what make both true: `services/` gets exercised for real, PostgreSQL never
-enters the picture.
-
-They are not mocks that record calls -- they are simplified but honest
-implementations, so a test that passes here is evidence the logic works, not
-just evidence that a method was called.
+``fake_dataset`` replaces datos.gov.co and ``fake_voice`` replaces the realtime
+engines, Cartesia, the affect models, the analyst and the feedback sink. They
+are simplified but honest implementations, so a test that passes here is
+evidence the logic works, not just that a method was called.
 """
-
-from tests.doubles.fake_repositories import (
-    InMemoryConversationRepository,
-    InMemoryUserRepository,
-)
-from tests.doubles.fake_llm import FakeChatModel
-from tests.doubles.fake_retriever import InMemoryRetriever
-from tests.doubles.hashing_embedder import HashingEmbedder
-
-__all__ = [
-    "InMemoryConversationRepository",
-    "InMemoryRetriever",
-    "InMemoryUserRepository",
-]

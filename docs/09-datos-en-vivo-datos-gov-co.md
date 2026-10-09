@@ -3,7 +3,7 @@
 Contrato vigente · versión `2026-10-09.3` (aditiva sobre la `.2`: cuatro herramientas nuevas y filtro de capacidad en `search_ips`) · dueño: **carril B** ([12](12-guia-de-trabajo-2-personas.md)).
 Decisiones: D-09, D-12 (API en vivo), D-13 (herramientas tipadas y sobre de evidencia).
 Reglas: R-22 (evidencia primero), R-23 (herramientas cerradas), R-25 (recuperación acotada).
-Base de partida: [sdd_ips/02](sdd_ips/02_tool_contracts.md) y [sdd_ips/04](sdd_ips/04_data_and_retrieval.md), adaptados (ver [07](07-reto-01-especificacion.md) §3).
+Base de partida: sdd_ips/02 y sdd_ips/04, adaptados (ver [07](07-reto-01-especificacion.md) §3).
 
 **El contexto del agente es esta API y nada más.** No hay base de datos, RAG, embeddings ni
 espejo: cada cifra sale de una consulta en vivo registrada (R-22). El jurado verifica la
@@ -299,7 +299,7 @@ Plazo de primer plano común: 6 s ([10](10-modelos-afecto-y-recuperacion.md) §5
 ## 12. Pruebas
 
 Sin red en la suite por defecto (R-16): **fixtures** a partir de
-[`sdd_ips/evidence/socrata_probe.json`](sdd_ips/evidence/socrata_probe.json) (incluye filas
+`sdd_ips/evidence/socrata_probe.json` (incluye filas
 repetidas de un mismo prestador) más fixtures sintéticos para Mixta, nivel vacío, cantidad nula,
 varias sedes y cambio de corte. Se prueban: constructores de consulta y escape, normalización y
 ambigüedad, sobre de evidencia, mapeo de estados y el grupo sin clave. Las sondas en vivo viven

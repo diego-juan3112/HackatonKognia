@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kognia-voice-agent"
-version = "0.2.0"
-description = "Base generica adaptable para el Kognia Challenge 2026"
+version = "0.5.0"
+description = "Agente de voz en tiempo real sobre el registro de IPS de datos.gov.co (Reto 01)"
 requires-python = ">=3.11"
-# Runtime minimo de Reto 01, igual a requirements.txt (mantener en sincronia).
+# Runtime de la API, igual a requirements.txt (mantener en sincronia).
 # Lista estatica a proposito: Vercel instala desde pyproject.toml cuando hay
-# pyproject.toml y requirements.txt (docs/11 §3). La base generica y las
-# pruebas van en requirements-base.txt.
+# pyproject.toml y requirements.txt (docs/11 §3). Las pruebas y los scripts
+# de medicion van en requirements-dev.txt.
 dependencies = [
     "langgraph>=1.2,<2.0",
     "langchain-core>=1.6,<2.0",
@@ -37,14 +37,10 @@ where = ["src"]
 # llega a importar. Era la causa de que nunca hubiera corrido.
 pythonpath = ["src", "."]
 testpaths = ["tests"]
-# `-m "not integration"` por defecto: la suite tiene que correr sin Docker ni
-# credenciales (R-16). Los tests contra Postgres se piden explicitamente
-# con `pytest -m integration`.
-addopts = "-q -m 'not integration'"
+# La suite corre sin red ni claves (R-16). Las sondas contra datos.gov.co real
+# (tests/live, marca `live`) se saltan salvo con KOGNIA_LIVE=1.
+addopts = "-q"
 asyncio_mode = "auto"
-markers = [
-    "integration: requiere un PostgreSQL con pgvector accesible en DATABASE_URL",
-]
 
 [tool.ruff]
 line-length = 100

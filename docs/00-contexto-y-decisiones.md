@@ -22,7 +22,7 @@ sin editarse** (R-02). Reto 01 prescinde de base de datos, RAG, embeddings y
 cédula: su contexto es **la API en vivo**. `docs/04-rag.md` describe la base
 genérica y **no aplica a Reto 01**.
 
-El paquete [sdd_ips](sdd_ips/README.md) (generado por GPT el 2026-10-09) es
+El paquete sdd_ips (generado por GPT el 2026-10-09) es
 **insumo**: los contratos vigentes son `docs/07–13`; ante conflicto mandan estos
 ([07](07-reto-01-especificacion.md) §3).
 

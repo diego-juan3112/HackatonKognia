@@ -3,7 +3,7 @@
 Contrato vigente · versión `2026-10-09.1` · dueño: **carril B** ([12](12-guia-de-trabajo-2-personas.md)).
 Decisiones: D-10 (LLM multi-proveedor), D-14 (excepción acotada a R-04), D-16 (afecto y estilo),
 D-18 (estado en el navegador y recuperación acotada). Reglas: R-24, R-25, R-26, R-27.
-Base de partida: [sdd_ips/02](sdd_ips/02_tool_contracts.md) y [sdd_ips/07](sdd_ips/07_models_and_feedback.md), adaptados ([07](07-reto-01-especificacion.md) §3).
+Base de partida: sdd_ips/02 y sdd_ips/07, adaptados ([07](07-reto-01-especificacion.md) §3).
 
 ## 1. Roles y perfiles
 
