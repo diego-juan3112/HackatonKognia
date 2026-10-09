@@ -32,7 +32,10 @@ TOOL_SPECS: list[ToolSpec] = [
         name="get_ips_details",
         description="Detalle y capacidad instalada de una sede (site_key de search_ips).",
         parameters={"type": "object", "properties": {
-            "site_key": _S, "capacity_group": _GROUP, "capacity_type": _S, "include_contact": {"type": "boolean"},
+            "site_key": _S, "capacity_group": _GROUP, "capacity_type": _S,
+            # Live test 2026-10-09: without this line the model turned it on unasked.
+            "include_contact": {"type": "boolean", "description": "true SOLO si la persona pidió expresamente "
+                                "teléfono, correo o dirección; nunca por iniciativa propia"},
         }, "required": ["site_key"]},
     ),
     ToolSpec(
