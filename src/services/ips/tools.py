@@ -22,8 +22,11 @@ from pydantic import ValidationError
 from models.ips import (
     TOOL_ARGS,
     AggregateIpsArgs,
+    AreaProfileArgs,
+    CompareAreasArgs,
     CompareIpsArgs,
     CorrectContextArgs,
+    DatasetInfoArgs,
     DatasetUnavailable,
     Deadline,
     Evidence,
@@ -34,10 +37,12 @@ from models.ips import (
     ToolError,
     ToolRequest,
     Trace,
+    VerifyRegistrationArgs,
 )
 from models.ports import DatasetPort
 from services.ips import for_model, soql
-from services.ips.lexicon import Lexicon
+from services.ips.lexicon import DISTRICTS, Lexicon
+from services.ips.normalize import norm
 
 ALWAYS_WARN = ["CUTOFF_2022"]
 # evidence.unit is a code; data.unit is the Spanish label the UI shows.
@@ -93,13 +98,17 @@ class IpsToolService:
         self._source_url = source_url
         self._cursor_key = cursor_key
         self._deadline_s = deadline_s
-        self._done: OrderedDict[tuple[str, str, int], ToolEnvelope] = OrderedDict()
+        self._done: OrderedDict[tuple[str, str, str, int, str], ToolEnvelope] = OrderedDict()
         self._handlers: dict[str, Callable[..., Awaitable[ToolEnvelope]]] = {
             "search_ips": self._search_ips,
             "get_ips_details": self._get_ips_details,
             "aggregate_ips": self._aggregate_ips,
             "compare_ips": self._compare_ips,
             "correct_context": self._correct_context,
+            "verify_registration": self._verify_registration,
+            "area_profile": self._area_profile,
+            "compare_areas": self._compare_areas,
+            "dataset_info": self._dataset_info,
         }
 
     # Most likely questions (brief suggestions and the demo script). Prefetching them
@@ -138,7 +147,9 @@ class IpsToolService:
     async def run(self, name: str, req: ToolRequest, scope: str = "") -> ToolEnvelope:
         # ``scope`` = the caller's session id: several evaluators at once must never share an
         # idempotent result, even if their engines happen to produce the same tool_call_id.
-        key = (scope, req.tool_call_id, req.context.state_version)
+        # H1 (concurrency review): the same tool_call_id with another tool or other args is another call.
+        args_fp = hashlib.sha256(json.dumps(req.args, sort_keys=True, default=str).encode()).hexdigest()[:16]
+        key = (scope, name, req.tool_call_id, req.context.state_version, args_fp)
         if key in self._done:  # docs/08 section 5.5: same call + same state -> same result
             return self._done[key]
         if name not in self._handlers:
@@ -306,20 +317,30 @@ class IpsToolService:
     # -- tools ---------------------------------------------------------------
 
     async def _search_ips(self, req: ToolRequest, a: SearchIpsArgs, deadline: Deadline) -> ToolEnvelope:
-        if not any([a.department, a.municipality, a.name, a.nature, a.level]):
+        if not any([a.department, a.municipality, a.name, a.nature, a.level, a.capacity_group]):
             raise _Reject("invalid", error=ToolError(
                 code="INVALID_ARGS", message="La búsqueda necesita al menos un filtro.",
-                hint="Agrega department, municipality, name, nature o level.", retryable=True))
+                hint="Agrega department, municipality, name, nature, level o capacity_group.", retryable=True))
         loc, warnings = self._resolve_location(a.department, a.municipality)
         codes, _ = self._resolve_name(a.name, loc)
-        filters = {**loc, "nature": a.nature, "level": str(a.level) if a.level else None}
+        group, ctype, cap_warn = self._resolve_capacity(a.capacity_group, a.capacity_type)
+        filters = {**loc, "nature": a.nature, "level": str(a.level) if a.level else None,
+                   "capacity_group": group, "capacity_type": ctype}
         where_sql = soql.where(filters, codes)
         fingerprint = hashlib.sha256(where_sql.encode()).hexdigest()
         offset = self._offset(a.cursor, fingerprint)
-        res = await self._q(soql.search_sites(where_sql, a.limit + 1, offset), deadline, req.bypass_cache)
+        res = await self._q(soql.search_sites(where_sql, a.limit + 1, offset, with_quantity=bool(group)),
+                            deadline, req.bypass_cache)
         rows = res.rows[: a.limit]
         more = len(res.rows) > a.limit
         items = [_site(r) for r in rows]
+        if group:
+            # Contract .3: sites that HAVE this installed capacity registered -- never "available/open".
+            for item, r in zip(items, rows, strict=True):
+                item["quantity"] = _num(r.get("quantity"))
+            warnings += cap_warn + ["NOT_AVAILABILITY"] + ([] if ctype else ["MIXED_TYPES"])
+            if any(i["quantity"] is None for i in items):
+                warnings.append("NULL_NOT_ZERO")
         if a.level:
             warnings.append("LEVEL_MISSING_MOSTLY")
         if more:
@@ -503,6 +524,245 @@ class IpsToolService:
                                                "confirmed": confirmed},
                               unit="correction", filters=confirmed, warnings=warnings, context_patch=patch,
                               state_version=new_version)
+
+    # -- contract .3: agent actions (validate, profile, compare, explain) ------
+
+    def _verify_name(self, name: str, loc: dict[str, str | None]) -> str:
+        """One provider code for a spoken name, or raise empty/ambiguous (never the first match)."""
+        match = self._lex.find_providers(name, department=loc["department"], municipality=loc["municipality"])
+        where = _area_label(loc) if (loc["department"] or loc["municipality"]) else None
+        if match.status == "unknown":
+            raise _Reject("empty", data={"registered": False, "reason": (
+                f"«{name}» no aparece registrada con ese nombre en el corte de 2022 del REPS"
+                + (f" en {where}" if where else "") + ". Eso no prueba que no exista: solo que no figura "
+                "con ese nombre en esta fuente. Ofrece revisar el nombre o la ubicación.")})
+        located = loc["department"] or loc["municipality"]
+        if len(match.departments) > 1 and not located:
+            raise _Reject("ambiguous", data={"field": "department", "candidates": match.departments[:3],
+                                             "question": "¿En qué departamento o municipio?"})
+        if match.status == "too_many":
+            raise _Reject("ambiguous", data={"field": "municipality", "candidates": match.departments[:3],
+                                             "question": "Hay muchas coincidencias: ¿en qué municipio?"})
+        codes = sorted(set(match.codes))
+        if match.status == "ok" and len(codes) == 1:
+            return codes[0]
+        exact = sorted({p["code"] for p in self._lex.provider_entries(codes) if p["norm"] == norm(name)})
+        if match.status == "ok" and len(exact) == 1:
+            return exact[0]
+        raise _Reject("ambiguous", data={"field": "name", "candidates": match.candidates[:3],
+                                         "match_count": len(codes), "question": "¿Cuál de estos prestadores?"})
+
+    async def _verify_registration(self, req: ToolRequest, a: VerifyRegistrationArgs,
+                                   deadline: Deadline) -> ToolEnvelope:
+        given = [x for x in (a.name, a.site_key, a.provider_code) if x]
+        if len(given) != 1:
+            raise _Reject("invalid", error=ToolError(
+                code="INVALID_ARGS", message="Indica exactamente uno: name, site_key o provider_code.",
+                hint="Lo normal: name (+ department o municipality).", retryable=True))
+        filters: dict[str, Any]
+        if a.site_key:
+            where_sql = soql.site_key_clause(*a.site_key.split(":"))
+            filters, warnings = {"site_key": a.site_key}, []
+        elif a.provider_code:
+            where_sql = soql.where({"provider_code": a.provider_code})
+            filters, warnings = {"provider_code": a.provider_code}, []
+        else:
+            loc, warnings = self._resolve_location(a.department, a.municipality)
+            code = self._verify_name(a.name or "", loc)
+            where_sql = soql.where({"provider_code": code})
+            filters = {**{k: v for k, v in loc.items() if v}, "name": a.name, "provider_code": code}
+        res = await self._q(soql.search_sites(where_sql, _MAX_LIST + 1), deadline, req.bypass_cache)
+        if not res.rows:
+            what = f"la sede {a.site_key}" if a.site_key else f"el código de prestador {a.provider_code or ''}"
+            return self._envelope(req, "empty", data={"registered": False, "reason": (
+                f"No aparece {what} en el corte de 2022 del REPS. Eso no prueba que no exista: solo que no "
+                "figura en esta fuente.")}, results=[res], unit="registration", filters=filters, warnings=warnings)
+        sites = [_site(r) for r in res.rows[:_MAX_LIST]]
+        more = len(res.rows) > _MAX_LIST
+        first = sites[0]
+        levels = sorted({s["level"] for s in sites if s["level"]})
+        munis = list(dict.fromkeys(f"{s['municipality']} ({s['department']})" for s in sites))
+        natures = sorted({s["nature"] for s in sites if s["nature"]})
+        if not levels:
+            warnings.append("LEVEL_MISSING_MOSTLY")
+        data = {
+            "registered": True,
+            "provider_code": first["site_key"].split(":")[0],
+            "provider_name": first["provider_name"],
+            "nature": ", ".join(natures) or None,
+            "levels": levels,
+            "level_label": ", ".join(f"nivel {lv}" for lv in levels) or "nivel no registrado",
+            "municipalities": munis[:5],
+            "municipality_count": len(munis),
+            "site_count": len(sites),
+            "site_count_complete": not more,
+            "site_keys": [s["site_key"] for s in sites[:3]],
+            "site_name": first["site_name"] if a.site_key else None,
+        }
+        if more:
+            warnings.append("PARTIAL_RESULT")
+        return self._envelope(req, "ok", data=data, results=[res], unit="registration", filters=filters,
+                              warnings=warnings, complete=not more,
+                              context_patch={"last_result_site_keys": data["site_keys"]})
+
+    async def _area_profile(self, req: ToolRequest, a: AreaProfileArgs, deadline: Deadline) -> ToolEnvelope:
+        if not (a.department or a.municipality):
+            raise _Reject("invalid", error=ToolError(
+                code="INVALID_ARGS", message="El perfil necesita un departamento o un municipio.",
+                hint="Agrega department o municipality (un solo lugar).", retryable=True))
+        loc, warnings = self._resolve_location(a.department, a.municipality)
+        where_sql = soql.where(loc)
+        # Same SoQL as aggregate_ips with the same filters, so the 60 s cache is shared.
+        cap = {
+            "beds": {"capacity_group": "CAMAS", "capacity_type": None},
+            "ambulances": {"capacity_group": "AMBULANCIAS", "capacity_type": None},
+            "emergency_rooms": {"capacity_group": "CONSULTORIOS", "capacity_type": "Urgencias"},
+        }
+        sqls = [soql.aggregate("provider_count", where_sql, "nature", "desc", None),
+                soql.aggregate("provider_count", where_sql, "level", "desc", None),
+                soql.aggregate("site_count", where_sql)]
+        sqls += [soql.aggregate("capacity_sum", soql.where({**loc, **c})) for c in cap.values()]
+        results = list(await asyncio.gather(*(self._q(s, deadline, req.bypass_cache) for s in sqls)))
+        nat_res, lvl_res, site_res, *cap_res = results
+        by_nature = [{"key": r.get(soql.col("nature")), "value": _num(r.get("value")) or 0} for r in nat_res.rows]
+        total = sum(g["value"] for g in by_nature)
+        area = _area_label(loc)
+        shown = {k: v for k, v in loc.items() if v}
+        if not total:
+            return self._envelope(req, "empty", data={"reason": f"No hay prestadores registrados en {area} en el "
+                                                                "corte de 2022."},
+                                  results=results, unit="profile", filters=shown, warnings=warnings)
+        for g in by_nature:
+            g["share_pct"] = _pct(g["value"], total)
+        by_level = []
+        for r in lvl_res.rows:
+            key = r.get(soql.col("level"))
+            v = _num(r.get("value")) or 0
+            by_level.append({"key": key, "label": f"nivel {key}" if key else "sin nivel registrado", "value": v,
+                             "share_pct": _pct(v, total)})
+        values = {name: (_num(res.rows[0].get("value")) if res.rows else None)
+                  for name, res in zip(cap, cap_res, strict=True)}
+        with_level = sum(g["value"] for g in by_level if g["key"])
+        derived = {
+            "level_registered_pct": _pct(with_level, total),
+            "beds_per_provider": round(values["beds"] / total, 1) if values["beds"] else None,
+            "largest_nature": max(by_nature, key=lambda g: g["value"])["key"],
+        }
+        site_codes = _num(site_res.rows[0].get("value")) if site_res.rows else None
+        warnings += ["SITE_CODES_NOT_PHYSICAL_SITES", "NOT_AVAILABILITY", "LEVEL_MISSING_MOSTLY", "DERIVED_FROM_SOURCE"]
+        if any(v is None for v in values.values()):
+            warnings.append("NULL_NOT_ZERO")
+        data = {"area": area, **{k: v for k, v in loc.items()}, "providers": total, "by_nature": by_nature,
+                "by_level": by_level, "site_codes": site_codes, **values, "derived": derived,
+                "derived_note": "calculado a partir de la fuente"}
+        return self._envelope(req, "ok", data=data, results=results, unit="profile", filters=shown,
+                              warnings=warnings, context_patch={"confirmed_filters": shown})
+
+    async def _compare_areas(self, req: ToolRequest, a: CompareAreasArgs, deadline: Deadline) -> ToolEnvelope:
+        group, ctype, warnings = self._resolve_capacity(a.capacity_group, a.capacity_type)
+        if a.metric == "capacity_sum" and not group:
+            raise _Reject("invalid", error=ToolError(
+                code="INVALID_ARGS", message="Para comparar capacidad hace falta el grupo.",
+                hint="Indica capacity_group (CAMAS, AMBULANCIAS, CONSULTORIOS...).", retryable=True))
+        locs = []
+        for i, ar in enumerate(a.areas):
+            if not (ar.department or ar.municipality):
+                raise _Reject("invalid", error=ToolError(
+                    code="INVALID_ARGS", message=f"El área {i + 1} no tiene departamento ni municipio.",
+                    hint="Cada área: department y/o municipality.", retryable=True))
+            try:
+                loc, w = self._resolve_location(ar.department, ar.municipality)
+            except _Reject as r:
+                r.data["area_index"] = i
+                raise
+            locs.append(loc)
+            warnings += w
+        if len({(lc["department"], lc["municipality"]) for lc in locs}) < len(locs):
+            raise _Reject("invalid", error=ToolError(code="INVALID_ARGS", message="Hay áreas repetidas.",
+                                                     hint="Compara lugares distintos.", retryable=True))
+        sqls = [soql.aggregate(a.metric, soql.where({**lc, "nature": None, "level": None, "capacity_group": group,
+                                                     "capacity_type": ctype})) for lc in locs]
+        results = list(await asyncio.gather(*(self._q(s, deadline, req.bypass_cache) for s in sqls)))
+        unit = {"provider_count": "providers", "site_count": "site_codes"}.get(a.metric) or (group or "").lower()
+        items = [{"area": _area_label(lc), "department": lc["department"], "municipality": lc["municipality"],
+                  "value": _num(res.rows[0].get("value")) if res.rows else None}
+                 for lc, res in zip(locs, results, strict=True)]
+        known = sorted((i for i in items if i["value"] is not None), key=lambda i: -i["value"])
+        comparisons = []
+        if known:
+            hi = known[0]
+            for o in known[1:]:
+                comparisons.append({"higher": hi["area"], "lower": o["area"], "equal": hi["value"] == o["value"],
+                                    "difference": hi["value"] - o["value"],
+                                    "ratio": round(hi["value"] / o["value"], 1) if o["value"] else None})
+        warnings += ["NOT_PER_CAPITA", "DERIVED_FROM_SOURCE"]
+        if a.metric == "site_count":
+            warnings.append("SITE_CODES_NOT_PHYSICAL_SITES")
+        if a.metric == "capacity_sum":
+            warnings += ["NOT_AVAILABILITY"] + ([] if ctype else ["MIXED_TYPES"])
+        if len(known) < len(items):
+            warnings.append("NULL_NOT_ZERO")
+        filters = {"areas": [i["area"] for i in items], "capacity_group": group, "capacity_type": ctype}
+        return self._envelope(req, "ok" if known else "empty",
+                              data={"metric": a.metric, "unit": _label(unit), "items": items,
+                                    "highest": known[0]["area"] if known else None, "comparisons": comparisons,
+                                    "derived_note": "calculado a partir de la fuente"},
+                              results=results, unit=unit, filters={k: v for k, v in filters.items() if v},
+                              warnings=warnings)
+
+    async def _dataset_info(self, req: ToolRequest, a: DatasetInfoArgs, deadline: Deadline) -> ToolEnvelope:
+        """Static (no query): what the source holds, what it does not, and what this agent can do."""
+        data: dict[str, Any] = {"topic": a.topic, "dataset_id": self._dataset_id, "cutoff_raw": self._lex.cutoff_raw}
+        if a.topic in ("all", "contents"):
+            data["contents"] = {**DATASET_CONTENTS, "capacity_groups": self._lex.capacity_groups}
+        if a.topic in ("all", "limits"):
+            data["not_contains"] = NOT_CONTAINED
+        if a.topic in ("all", "capabilities"):
+            data["capabilities"] = CAPABILITIES
+        return self._envelope(req, "ok", data=data, unit="dataset_info", filters={"topic": a.topic})
+
+
+_MAX_LIST = 20  # no tool lists more than 20 rows (abuse limit, docs/09 section 4)
+
+DATASET_CONTENTS: dict[str, Any] = {
+    "title": "Relación de IPS públicas y privadas según el nivel de atención y capacidad instalada",
+    "source": "REPS (Registro Especial de Prestadores de Servicios de Salud), Ministerio de Salud",
+    "grain": "Cada fila es una categoría de capacidad instalada de una sede; un prestador (IPS) tiene una o "
+             "más sedes.",
+    "fields": ["departamento y municipio", "nombre y código del prestador", "nombre y número de sede",
+               "naturaleza (Pública, Privada, Mixta)", "nivel de atención (vacío en la mayoría)",
+               "capacidad instalada por grupo y tipo"],
+}
+NOT_CONTAINED: list[str] = [
+    "citas ni agendamiento", "disponibilidad actual de camas o servicios", "horarios", "médicos o personal",
+    "servicios habilitados en detalle", "calidad o quejas", "precios o tarifas", "EPS o convenios",
+    "coordenadas o cercanía", "datos posteriores a noviembre de 2022",
+]
+CAPABILITIES: list[str] = [
+    "buscar sedes por lugar, nombre, naturaleza, nivel o capacidad instalada",
+    "ver el detalle y la capacidad instalada de una sede",
+    "verificar si una IPS está registrada en el corte 2022",
+    "contar IPS o códigos de sede y sumar capacidad, con agrupaciones",
+    "hacer el perfil de un departamento o municipio",
+    "comparar 2 o 3 sedes o 2 o 3 lugares",
+]
+
+
+def _pct(value: int | float, total: int | float) -> int | float:
+    """Share in %, computed in Python from source figures (one decimal only below 1%)."""
+    if not total:
+        return 0
+    p = 100 * value / total
+    return round(p, 1) if 0 < p < 1 else round(p)
+
+
+def _area_label(loc: dict[str, str | None]) -> str:
+    """'MELGAR' + 'Tolima' -> 'Melgar (Tolima)'; a district (Cali) is just 'Cali'; a department as is."""
+    muni, dept = loc.get("municipality"), loc.get("department")
+    if muni:
+        title = muni.title()
+        return title if (dept in DISTRICTS or norm(dept or "").startswith(norm(muni))) else f"{title} ({dept})"
+    return dept or ""
 
 
 def _site(r: dict[str, Any]) -> dict[str, Any]:

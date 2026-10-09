@@ -5,6 +5,16 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added — Reto 01, herramientas de agente (2026-10-09, rama `feat/reto-01-api-tools`, contrato datos `2026-10-09.3`)
+- `verify_registration`, `area_profile`, `compare_areas` y `dataset_info` en `POST /tools/{nombre}` y en las
+  declaraciones de herramientas ([09](docs/09-datos-en-vivo-datos-gov-co.md) §4). Porcentajes, diferencias y
+  razones se calculan en Python a partir de la fuente (R-22); `dataset_info` no consulta la fuente.
+- `search_ips` acepta `capacity_group`/`capacity_type` (sedes con esa capacidad instalada registrada, con
+  `NOT_AVAILABILITY`). Advertencias nuevas: `DERIVED_FROM_SOURCE`, `NOT_PER_CAPITA`.
+
+### Fixed
+- Idempotencia de `IpsToolService.run`: la clave incluye herramienta y huella de argumentos (H1).
+
 ### Added — Reto 01, carril B (2026-10-09, rama `feat/reto-01-api`)
 - **Backend de voz implementado** (`src/api/app_voice.py`, contrato `2026-10-09.2`): `GET /health`
   (con `voice_modes`), `POST /sessions` (token HMAC anónimo, R-28), `POST /realtime/session`

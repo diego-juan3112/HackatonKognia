@@ -109,10 +109,13 @@ def aggregate(metric: str, where_sql: str, group_by: str | None = None, order: s
     return _assemble(f"{cols}, {expr} AS value", where_sql, group=cols, order=f"value {direction}", limit=limit)
 
 
-def search_sites(where_sql: str, limit: int, offset: int = 0) -> str:
+def search_sites(where_sql: str, limit: int, offset: int = 0, with_quantity: bool = False) -> str:
+    """Sites (grouped so capacity rows do not repeat). ``with_quantity`` adds the summed capacity
+    of the filtered group/type per site (search_ips with a capacity filter, contract .3)."""
     cols = ", ".join(col(f) for f in SITE_COLUMNS)
+    select = cols + (f", sum({col('quantity')}) AS quantity" if with_quantity else "")
     order = f"{col('provider_name')}, {col('site_number')}, {col('site_code')}"
-    return _assemble(cols, where_sql, group=cols, order=order, limit=limit, offset=offset)
+    return _assemble(select, where_sql, group=cols, order=order, limit=limit, offset=offset)
 
 
 def site_info(key_sql: str, include_contact: bool) -> str:

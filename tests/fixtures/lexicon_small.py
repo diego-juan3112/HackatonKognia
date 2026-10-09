@@ -34,5 +34,6 @@ LEXICON = {
     "capacity": [
         {"group": "CAMAS", "type": "Adultos"}, {"group": "CAMAS", "type": "Pediátrica"},
         {"group": "AMBULANCIAS", "type": "Básica"}, {"group": "SALAS", "type": "Quirófano"},
+        {"group": "CONSULTORIOS", "type": "Urgencias"}, {"group": "CONSULTORIOS", "type": "Consulta Externa"},
     ],
 }
