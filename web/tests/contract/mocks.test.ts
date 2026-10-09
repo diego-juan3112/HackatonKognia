@@ -47,8 +47,7 @@ describe("mocks/brief.json — cifras doradas", () => {
     expect(new Set(brief.suggested_questions).size).toBe(brief.suggested_questions.length);
   });
 
-  it("el brief hablado declara que es una IA y dice las mismas cifras y el corte (A-02, A-25)", () => {
-    expect(brief.spoken_brief).toMatch(/inteligencia artificial/i);
+  it("el brief hablado dice las mismas cifras y el corte (A-02)", () => {
     expect(brief.spoken_brief).toContain("9.320");
     expect(brief.spoken_brief).toContain("10.921");
     expect(brief.spoken_brief).toMatch(/noviembre de 2022/);

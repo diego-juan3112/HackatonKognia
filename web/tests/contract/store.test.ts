@@ -79,15 +79,17 @@ describe("sesión", () => {
     expect(store.getState().state_version).toBe(3);
   });
 
-  it("Reiniciar borra conversación, consultas, afecto, avisos y el consentimiento de voz (A-25)", () => {
-    store.setVoiceAnalysis(true);
+  it("Reiniciar borra conversación, consultas, afecto y avisos, y devuelve el análisis de voz a su valor por defecto: activo (A-25)", () => {
+    // Decisión vigente: el análisis de voz está ACTIVO por defecto; `reset` vuelve a ese valor.
+    expect(store.getState().voiceAnalysis).toBe(true);
+    store.setVoiceAnalysis(false);
     store.dispatch(ev("transcript", user("hola", true)));
     store.dispatch(ev("tool_call", { tool_call_id: "c1", name: "aggregate_ips", args: {} }));
     store.dispatch(ev("error", { code: "ENGINE_DROPPED", message: "x", retryable: true }));
     store.setEngine("gemini", "g", true);
     store.reset();
     const s = store.getState();
-    expect(s).toMatchObject({ running: false, status: "idle", conversation_id: null, voiceAnalysis: false, lastError: null });
+    expect(s).toMatchObject({ running: false, status: "idle", conversation_id: null, voiceAnalysis: true, lastError: null });
     expect([s.utterances, s.tools, s.affect, s.turns, s.notices]).toEqual([[], [], [], [], []]);
     expect(s.evidence).toEqual({});
     expect(s.engine).toBe("gemini"); // the engine is a setting, not conversation state
