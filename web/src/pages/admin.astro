@@ -1,0 +1,297 @@
+---
+/**
+ * Admin board: observe and steer the agent. It reads the same store singleton
+ * as the conversation screen, so a conversation started on /consola shows up
+ * here after navigating (the client router keeps the modules alive).
+ *
+ * Wide screens show every section in a grid. Below 900px one section is shown
+ * at a time, picked with the segmented control under the title.
+ */
+import ArrowRight from "@lucide/astro/icons/arrow-right";
+import Base from "../layouts/Base.astro";
+import AdminControls from "../components/AdminControls.astro";
+import AffectPanel from "../components/AffectPanel.astro";
+import ApiPanel from "../components/ApiPanel.astro";
+import IconBank from "../components/IconBank.astro";
+import LatencyHud from "../components/LatencyHud.astro";
+import Orb from "../components/Orb.astro";
+import Transcript from "../components/Transcript.astro";
+
+const views = [
+  { id: "agente", label: "Agente" },
+  { id: "emociones", label: "Emociones" },
+  { id: "transcripcion", label: "Transcripción" },
+  { id: "api", label: "API" },
+  { id: "latencia", label: "Latencia" },
+];
+---
+
+<Base title="Administrador · IPS en Vivo" description="Tablero para observar y administrar al agente: emociones, transcripción, consultas, latencia y controles.">
+  <div class="admin" id="admin" data-view="agente">
+    <header class="admin-top">
+      <div class="orb-slot"><Orb /></div>
+      <div class="title">
+        <h1>Administrador</h1>
+        <p id="admin-status" role="status">Sin conversación</p>
+      </div>
+      <a class="btn" href="/consola">Ir a la conversación <ArrowRight aria-hidden="true" /></a>
+    </header>
+
+    <div class="views" role="group" aria-label="Sección visible">
+      {
+        views.map((v, i) => (
+          <button type="button" data-view-btn={v.id} aria-pressed={i === 0 ? "true" : "false"}>
+            {v.label}
+          </button>
+        ))
+      }
+    </div>
+
+    <div class="board">
+      <AdminControls />
+      <AffectPanel />
+      <Transcript />
+      <ApiPanel />
+      <LatencyHud />
+    </div>
+  </div>
+  <IconBank />
+</Base>
+
+<script>
+  import { bind, byId, panel } from "../scripts/dom";
+  import { engineLabel } from "../voice/engine-factory";
+  import type { EngineStatus } from "../voice/types";
+
+  const STATUS: Record<EngineStatus, string> = {
+    idle: "En línea",
+    connecting: "Conectando",
+    listening: "Escuchando",
+    thinking: "Consultando la fuente",
+    speaking: "Hablando",
+    renewing: "Renovando la sesión",
+    error: "Con problemas",
+  };
+
+  const KEY = "ips.admin-view";
+
+  panel("admin", (root) => {
+    const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-view-btn]"));
+    const show = (id: string): void => {
+      if (!buttons.some((b) => b.dataset.viewBtn === id)) return;
+      root.dataset.view = id;
+      for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.viewBtn === id));
+      try {
+        sessionStorage.setItem(KEY, id);
+      } catch {
+        // Not essential.
+      }
+    };
+    for (const b of buttons) b.addEventListener("click", () => show(b.dataset.viewBtn ?? ""));
+    try {
+      show(sessionStorage.getItem(KEY) ?? "agente");
+    } catch {
+      // Keep the default view.
+    }
+
+    return bind(["status", "meta", "latency", "transcript"], (s) => {
+      const el = byId("admin-status");
+      if (!el) return;
+      const idle = !s.running && s.utterances.length === 0;
+      const parts = idle
+        ? ["Sin conversación", engineLabel(s.engine)]
+        : [s.running ? STATUS[s.status] : "Conversación detenida", engineLabel(s.engine), `${s.turns.length} ${s.turns.length === 1 ? "turno" : "turnos"}`];
+      if (s.simulated) parts.push("motor simulado");
+      const text = parts.join(" · ");
+      if (el.textContent !== text) el.textContent = text;
+    });
+  });
+</script>
+
+<style is:global>
+  /* Shared anatomy of every section of the board. */
+  .board-card {
+    container: board-card / inline-size;
+    min-width: 0;
+    padding: clamp(var(--s-4), 2.4vw, var(--s-5));
+  }
+
+  .board-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-1) var(--s-4);
+    margin-bottom: var(--s-4);
+  }
+
+  .board-head h2 {
+    font-size: var(--t-md);
+  }
+
+  .board-head p {
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  .board-empty {
+    max-width: 46ch;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  .board-scroll {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+</style>
+
+<style>
+  .admin {
+    display: grid;
+    gap: var(--s-4);
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: clamp(var(--s-4), 3vw, var(--s-6)) var(--gutter) var(--s-6);
+  }
+
+  .admin-top {
+    --orb-size: 3.25rem;
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+
+  .orb-slot {
+    flex: none;
+  }
+
+  .title {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    margin-right: auto;
+  }
+
+  h1 {
+    font-size: var(--t-xl);
+  }
+
+  #admin-status {
+    color: var(--state-ink);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    transition: color 0.3s;
+  }
+
+  /* ── Section picker (small screens only) ───────────────────────────────── */
+
+  .views {
+    position: sticky;
+    top: var(--s-2);
+    z-index: 5;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+
+  .views button {
+    flex: 1 0 auto;
+    scroll-snap-align: center;
+    min-height: var(--tap);
+    padding: 0 var(--s-4);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+  }
+
+  .views button[aria-pressed="true"] {
+    background: var(--primary);
+    color: var(--on-dark);
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-4);
+  }
+
+  @media (max-width: 899px) {
+    .board > :global([data-section]) {
+      display: none;
+    }
+
+    .admin[data-view="agente"] .board > :global([data-section="agente"]),
+    .admin[data-view="emociones"] .board > :global([data-section="emociones"]),
+    .admin[data-view="transcripcion"] .board > :global([data-section="transcripcion"]),
+    .admin[data-view="api"] .board > :global([data-section="api"]),
+    .admin[data-view="latencia"] .board > :global([data-section="latencia"]) {
+      display: block;
+    }
+
+    .admin[data-view="agente"] .board > :global([data-section="agente"]) {
+      display: grid;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .admin-top .btn {
+      flex: none;
+      padding: 0;
+      width: var(--tap);
+      font-size: 0;
+      gap: 0;
+    }
+
+    .admin-top .btn :global(svg) {
+      font-size: 1.1rem;
+    }
+  }
+
+  /* ── The board ─────────────────────────────────────────────────────────── */
+
+  @media (min-width: 900px) {
+    .views {
+      display: none;
+    }
+
+    .board {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: var(--s-5);
+      align-items: start;
+    }
+
+    .board > :global([data-section="agente"]) { grid-column: span 5; }
+    .board > :global([data-section="emociones"]) { grid-column: span 7; }
+    .board > :global([data-section="transcripcion"]) { grid-column: span 6; }
+    .board > :global([data-section="api"]) { grid-column: span 6; }
+    .board > :global([data-section="latencia"]) { grid-column: 1 / -1; }
+
+    .board :global(.board-scroll) {
+      max-height: 30rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .board > :global([data-section="agente"]) { grid-column: span 4; }
+    .board > :global([data-section="emociones"]) { grid-column: span 8; }
+    .board > :global([data-section="transcripcion"]) { grid-column: span 5; }
+    .board > :global([data-section="api"]) { grid-column: span 7; }
+  }
+</style>

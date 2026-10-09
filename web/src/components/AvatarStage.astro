@@ -1,0 +1,551 @@
+---
+/**
+ * The stage for the 3D avatar (mounted by src/avatar/, another lane) with the
+ * orb as visual fallback, the live status badge, the subtitle bubble and the
+ * two voice controls: talk and mute.
+ *
+ * «Avatar 3D / Orbe»: the person can hide the 3D model and keep only the orb.
+ * The choice is stored in localStorage (`ips.avatar` = "on" | "off"), mirrored
+ * in `#avatar-stage[data-avatar-enabled]` and announced on `window` with the
+ * CustomEvent `avatar:toggle` ({ detail: { enabled } }). While it is off the
+ * avatar module is never loaded (no .vrm download, no WebGL); if it was
+ * mounted, its host is disposed.
+ *
+ * On phones and upright tablets the stage is compact and the talk button moves
+ * to the composer at the bottom edge (see Chat.astro), within reach of the thumb.
+ */
+import CircleDot from "@lucide/astro/icons/circle-dot";
+import Maximize from "@lucide/astro/icons/maximize";
+import Mic from "@lucide/astro/icons/mic";
+import Rotate3d from "@lucide/astro/icons/rotate-3d";
+import Square from "@lucide/astro/icons/square";
+import UserRound from "@lucide/astro/icons/user-round";
+import VolumeX from "@lucide/astro/icons/volume-x";
+import ZoomIn from "@lucide/astro/icons/zoom-in";
+import ZoomOut from "@lucide/astro/icons/zoom-out";
+import Orb from "./Orb.astro";
+---
+
+<section class="stage-card" id="stage" aria-label="Voz">
+  <div id="avatar-stage" data-avatar="absent">
+    <canvas id="avatar-canvas" aria-hidden="true"></canvas>
+    <div class="fallback">
+      <Orb />
+    </div>
+
+    <p class="live-badge" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="state-badge" data-testid="state-badge">En línea</span>
+    </p>
+
+    <div class="stage-tools" role="group" aria-label="Vista">
+      <button type="button" class="tool tool-mute" data-testid="mute-button-stage" data-mute disabled aria-label="Silenciar" title="Silenciar (Esc)"><VolumeX aria-hidden="true" /></button>
+      <button type="button" class="tool" id="btn-fullscreen" aria-label="Pantalla completa" title="Pantalla completa"><Maximize aria-hidden="true" /></button>
+      <button type="button" class="tool tool-cam" id="btn-camera" aria-label="Reiniciar cámara" title="Reiniciar cámara"><Rotate3d aria-hidden="true" /></button>
+      <button type="button" class="tool tool-cam" id="btn-zoom-in" aria-label="Acercar" title="Acercar"><ZoomIn aria-hidden="true" /></button>
+      <button type="button" class="tool tool-cam" id="btn-zoom-out" aria-label="Alejar" title="Alejar"><ZoomOut aria-hidden="true" /></button>
+    </div>
+
+    <div class="stage-mode" role="group" aria-label="Qué se muestra">
+      <button type="button" data-avatar-mode="on" data-testid="avatar-mode-3d" aria-pressed="true" title="Mostrar el avatar 3D">
+        <UserRound aria-hidden="true" /> <span>Avatar 3D</span>
+      </button>
+      <button type="button" data-avatar-mode="off" data-testid="avatar-mode-orb" aria-pressed="false" title="Mostrar solo el orbe">
+        <CircleDot aria-hidden="true" /> <span>Orbe</span>
+      </button>
+    </div>
+
+    <p class="subtitle" id="subtitle" data-testid="subtitle" aria-hidden="true" hidden></p>
+    <!-- Screen readers get finished utterances only, never every partial. -->
+    <div class="sr-only" id="subtitle-live" aria-live="polite" aria-atomic="true"></div>
+  </div>
+
+  <div class="stage-controls">
+    <button class="btn btn-talk" type="button" id="btn-toggle" data-testid="mic-button" data-running="false">
+      <span class="when-stopped"><Mic aria-hidden="true" /> Hablar</span>
+      <span class="when-running"><Square aria-hidden="true" /> Detener</span>
+    </button>
+    <button class="btn" type="button" id="btn-mute" data-testid="mute-button" data-mute disabled aria-keyshortcuts="Escape" title="Silenciar (Esc)">
+      <VolumeX aria-hidden="true" /> Silenciar
+    </button>
+    <p class="status-sub" id="status-sub">Pulsa Hablar o escribe tu pregunta.</p>
+  </div>
+</section>
+
+<script>
+  import { hostAvatar, type AvatarHost } from "../scripts/avatar-host";
+  import { bind, byId, esc, panel } from "../scripts/dom";
+  import * as controller from "../voice/controller";
+  import { getState, type ConsoleState } from "../voice/store";
+  import type { EngineStatus } from "../voice/types";
+
+  const LABEL: Record<EngineStatus, string> = {
+    idle: "En línea",
+    connecting: "Conectando",
+    listening: "Te escucho",
+    thinking: "Consultando",
+    speaking: "Hablando",
+    renewing: "Un momento",
+    error: "Hay un problema",
+  };
+
+  const SUB: Record<EngineStatus, string> = {
+    idle: "Pulsa Hablar o escribe tu pregunta.",
+    connecting: "Preparando la conversación.",
+    listening: "Habla o escribe tu pregunta.",
+    thinking: "Buscando en el registro.",
+    speaking: "Puedes interrumpir cuando quieras.",
+    renewing: "Retomando la conversación donde iba.",
+    error: "Puedes seguir por texto.",
+  };
+
+  /** The bubble shows the tail of long speech, so it never covers the avatar. */
+  const SUBTITLE_WORDS = 24;
+  const tail = (text: string): string => {
+    const words = text.split(/\s+/);
+    return words.length > SUBTITLE_WORDS ? `… ${words.slice(-SUBTITLE_WORDS).join(" ")}` : text;
+  };
+
+  const AVATAR_KEY = "ips.avatar";
+  const avatarWanted = (): boolean => {
+    try {
+      return localStorage.getItem(AVATAR_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  };
+
+  const ZOOM_MIN = 0.7;
+  const ZOOM_MAX = 1.6;
+
+  panel("stage", (root) => {
+    const stage = byId("avatar-stage");
+    const toggle = byId<HTMLButtonElement>("btn-toggle");
+    const mutes = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-mute]"));
+    const subtitle = byId("subtitle");
+    const live = byId("subtitle-live");
+    let zoom = 1;
+    let announced = "";
+
+    const modes = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-avatar-mode]"));
+    let avatar: AvatarHost | null = null;
+    let canvasUsed = false;
+
+    /** Mounts the 3D avatar. A canvas that already held a disposed WebGL context is replaced first. */
+    const mountAvatar = (): void => {
+      let canvas = byId<HTMLCanvasElement>("avatar-canvas");
+      if (!stage || !canvas || avatar) return;
+      if (canvasUsed) {
+        const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
+        canvas.replaceWith(fresh);
+        canvas = fresh;
+      }
+      canvasUsed = true;
+      avatar = hostAvatar(stage, canvas);
+    };
+
+    /** `announce` is false on first paint: only a change made by the person is an event. */
+    const setAvatarEnabled = (enabled: boolean, announce: boolean): void => {
+      if (!stage) return;
+      stage.dataset.avatarEnabled = String(enabled);
+      for (const b of modes) b.setAttribute("aria-pressed", String((b.dataset.avatarMode === "on") === enabled));
+      if (enabled) mountAvatar();
+      else if (avatar) {
+        avatar.dispose();
+        avatar = null;
+        stage.dataset.avatar = "absent";
+      }
+      if (!announce) return;
+      try {
+        localStorage.setItem(AVATAR_KEY, enabled ? "on" : "off");
+      } catch {
+        // Private mode: the choice lasts for this page only.
+      }
+      window.dispatchEvent(new CustomEvent("avatar:toggle", { detail: { enabled } }));
+    };
+
+    for (const b of modes) {
+      b.addEventListener("click", () => {
+        const enabled = b.dataset.avatarMode === "on";
+        if (String(enabled) !== stage?.dataset.avatarEnabled) setAvatarEnabled(enabled, true);
+      });
+    }
+    setAvatarEnabled(avatarWanted(), false);
+
+    const setZoom = (value: number): void => {
+      zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+      stage?.style.setProperty("--zoom", zoom.toFixed(2));
+    };
+
+    toggle?.addEventListener("click", () => (getState().running ? controller.stop() : void controller.start()));
+    for (const m of mutes) m.addEventListener("click", () => controller.interruptSpeech());
+    byId("btn-zoom-in")?.addEventListener("click", () => setZoom(zoom + 0.15));
+    byId("btn-zoom-out")?.addEventListener("click", () => setZoom(zoom - 0.15));
+    byId("btn-camera")?.addEventListener("click", () => {
+      setZoom(1);
+      avatar?.resetCamera();
+    });
+    byId("btn-fullscreen")?.addEventListener("click", () => {
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else void stage?.requestFullscreen?.().catch(() => undefined);
+    });
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape" && getState().status === "speaking" && !document.querySelector("dialog[open]")) {
+        controller.interruptSpeech();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+
+    const renderStatus = (s: ConsoleState): void => {
+      const stopped = !s.running && s.status === "idle";
+      const ended = stopped && s.utterances.length > 0;
+      const sub = ended
+        ? "Conversación detenida. Pulsa Hablar para seguir."
+        : s.status === "error" && s.lastError
+          ? s.lastError.message
+          : SUB[s.status];
+      const set = (id: string, text: string): void => {
+        const el = byId(id);
+        if (el && el.textContent !== text) el.textContent = text;
+      };
+      set("state-badge", LABEL[s.status]);
+      set("status-sub", s.simulated && s.running ? `${sub} Demostración sin audio.` : sub);
+      if (toggle) toggle.dataset.running = String(s.running);
+      for (const m of mutes) m.disabled = s.status !== "speaking";
+    };
+
+    const renderSubtitle = (s: ConsoleState): void => {
+      if (!subtitle) return;
+      const last = s.utterances[s.utterances.length - 1];
+      subtitle.hidden = !last;
+      if (!last) {
+        // After «Reiniciar» nothing of the previous conversation may linger, on screen or for screen readers.
+        subtitle.textContent = "";
+        if (live) live.textContent = "";
+        announced = "";
+        return;
+      }
+      const who = last.role === "agent" ? "Asistente" : "Tú";
+      const heard = last.delivered_text ?? last.correction?.text ?? last.text;
+      subtitle.className = `subtitle role-${last.role}${last.final ? "" : " partial"}`;
+      subtitle.innerHTML = `<b>${who}</b> ${esc(tail(heard))}`;
+      if (last.final && live && announced !== last.id) {
+        announced = last.id;
+        live.textContent = `${who}: ${heard}`;
+      }
+    };
+
+    const unbindStatus = bind(["status", "meta", "transcript"], renderStatus);
+    const unbindSubtitle = bind(["transcript"], renderSubtitle);
+
+    return () => {
+      unbindStatus();
+      unbindSubtitle();
+      avatar?.dispose();
+      document.removeEventListener("keydown", onKey);
+    };
+  });
+</script>
+
+<style>
+  .stage-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    min-height: 0;
+    min-width: 0;
+  }
+
+  #avatar-stage {
+    --zoom: 1;
+    --orb-size: min(62cqw, 78cqh, 360px);
+    container: stage / size;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background:
+      radial-gradient(60% 22% at 50% 96%, var(--stage-floor), transparent 70%),
+      radial-gradient(90% 70% at 50% 30%, color-mix(in oklab, var(--state-soft) 70%, var(--white)), transparent 75%),
+      linear-gradient(180deg, var(--stage-top), var(--stage-bottom));
+    transition: background 0.4s var(--ease);
+  }
+
+  #avatar-stage:fullscreen {
+    border: 0;
+    border-radius: 0;
+  }
+
+  #avatar-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+    transform: scale(var(--zoom));
+    transition:
+      opacity 0.4s,
+      transform 0.25s var(--ease);
+  }
+
+  #avatar-stage[data-avatar="ready"] #avatar-canvas {
+    opacity: 1;
+  }
+
+  /* «Orbe» mode: the orb is the stage, whatever the avatar module was doing. */
+  #avatar-stage[data-avatar-enabled="false"] #avatar-canvas {
+    display: none;
+  }
+
+  #avatar-stage[data-avatar-enabled="false"] .fallback {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* Leave the lower part of a tall stage to the caption and the mode switch. */
+  @container stage (min-height: 321px) {
+    .fallback {
+      --orb-size: min(58cqw, 58cqh, 340px);
+      padding-bottom: 20cqh;
+    }
+  }
+
+  #avatar-stage[data-avatar-enabled="false"] .tool-cam {
+    display: none;
+  }
+
+  .fallback {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    transform: scale(var(--zoom));
+    transition:
+      opacity 0.4s,
+      transform 0.25s var(--ease);
+  }
+
+  #avatar-stage[data-avatar="ready"] .fallback {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .live-badge {
+    position: absolute;
+    top: var(--s-3);
+    left: var(--s-3);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--r-pill);
+    background: var(--glass);
+    box-shadow: var(--shadow-float);
+    color: var(--state-ink);
+    font-size: var(--t-sm);
+    font-weight: 650;
+    backdrop-filter: blur(6px);
+  }
+
+  .dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    flex: none;
+    border-radius: 50%;
+    background: var(--state);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--state) 22%, transparent);
+    transition:
+      background-color 0.3s,
+      box-shadow 0.3s;
+  }
+
+  .stage-tools {
+    position: absolute;
+    top: var(--s-3);
+    right: var(--s-3);
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .tool {
+    display: grid;
+    place-items: center;
+    width: var(--tap);
+    height: var(--tap);
+    border: 0;
+    border-radius: 50%;
+    background: var(--glass);
+    box-shadow: var(--shadow-float);
+    color: var(--ink-2);
+    transition:
+      color 0.15s,
+      opacity 0.15s,
+      transform 0.15s var(--ease);
+  }
+
+  .tool:hover:not(:disabled) {
+    color: var(--accent-ink);
+    transform: scale(1.06);
+  }
+
+  .tool:disabled {
+    opacity: 0.45;
+  }
+
+  /* ── Avatar 3D / Orbe ──────────────────────────────────────────────────── */
+
+  .stage-mode {
+    position: absolute;
+    left: var(--s-3);
+    bottom: var(--s-3);
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-pill);
+    background: var(--glass);
+    box-shadow: var(--shadow-float);
+    backdrop-filter: blur(6px);
+  }
+
+  .stage-mode button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-2);
+    min-width: var(--tap);
+    min-height: var(--tap);
+    padding: 0 var(--s-3);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+  }
+
+  .stage-mode button[aria-pressed="true"] {
+    background: var(--primary);
+    color: var(--on-dark);
+  }
+
+  .subtitle {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--tap) + var(--s-5));
+    translate: -50% 0;
+    width: max-content;
+    max-width: min(92%, 34rem);
+    padding: var(--s-2) var(--s-4) var(--s-3);
+    border-radius: var(--r-md);
+    background: var(--scrim);
+    color: var(--on-dark);
+    font-size: var(--t-base);
+    font-weight: 550;
+    line-height: 1.35;
+    text-wrap: pretty;
+    backdrop-filter: blur(6px);
+  }
+
+  .subtitle :global(b) {
+    display: block;
+    font-size: var(--t-xs);
+    font-weight: 700;
+    color: var(--blue-300);
+  }
+
+  .subtitle.role-user :global(b) {
+    color: var(--violet-300);
+  }
+
+  /* ── Controls ──────────────────────────────────────────────────────────── */
+
+  .stage-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--s-2) var(--s-3);
+  }
+
+  .stage-controls .btn:not(.btn-talk) {
+    min-height: 3.25rem;
+    padding-inline: var(--s-5);
+  }
+
+  .btn-talk span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .btn-talk[data-running="true"] .when-stopped,
+  .btn-talk[data-running="false"] .when-running {
+    display: none;
+  }
+
+  .status-sub {
+    grid-column: 1 / -1;
+    min-height: 1.4em;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+    text-align: center;
+  }
+
+  /* Wide screens: mute sits beside the talk button, not on the stage. */
+  .tool-mute {
+    display: none;
+  }
+
+  /* A short stage has no room for a caption: the chat is right below it. */
+  @container stage (max-height: 320px) {
+    .subtitle {
+      display: none;
+    }
+
+    .tool-cam {
+      display: none;
+    }
+  }
+
+  /* Narrow stage: the two modes keep their icons and accessible names, not their labels. */
+  @container stage (max-width: 460px) {
+    .stage-mode button {
+      padding: 0;
+    }
+
+    .stage-mode span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+  }
+
+  @container stage (max-height: 190px) {
+    #btn-fullscreen {
+      display: none;
+    }
+  }
+
+  /* Phones and upright tablets: compact stage, controls move to the composer. */
+  @media (max-width: 1023px) {
+    .stage-controls {
+      display: none;
+    }
+
+    .tool-mute {
+      display: grid;
+    }
+
+    .stage-tools {
+      grid-auto-flow: column;
+    }
+  }
+</style>

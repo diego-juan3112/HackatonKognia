@@ -1,0 +1,31 @@
+---
+/** One discreet attribution line. No navigation. */
+---
+
+<footer class="site-footer">
+  <p>
+    Datos: REPS · MinSalud, corte 5-nov-2022, en{" "}
+    <a href="https://www.datos.gov.co/d/s2ru-bqt6" target="_blank" rel="noopener noreferrer">datos.gov.co</a>. Licencia{" "}
+    <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.es" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>.
+  </p>
+</footer>
+
+<style>
+  .site-footer {
+    display: flex;
+    justify-content: center;
+    padding: var(--s-3) var(--gutter);
+    padding-bottom: max(var(--s-3), env(safe-area-inset-bottom));
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    text-align: center;
+  }
+
+  a {
+    text-underline-offset: 2px;
+  }
+
+  a:hover {
+    color: var(--ink);
+  }
+</style>

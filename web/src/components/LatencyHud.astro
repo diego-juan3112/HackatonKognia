@@ -1,0 +1,315 @@
+---
+/**
+ * Latency HUD (F-10, R-29; docs/08 §9): per turn, the engine and model, the
+ * spoken acknowledgement (measured apart: it is not the answer), the tool
+ * time, the first useful audio against its target, attempts and analysis time.
+ */
+---
+
+<section class="card board-card hud" id="hud" data-testid="latency-panel" data-section="latencia" aria-labelledby="hud-title">
+  <header class="board-head hud-meta">
+    <h2 id="hud-title">Latencia por turno</h2>
+    <p id="hud-engine"></p>
+  </header>
+  <div class="hud-main" id="hud-main"></div>
+  <div class="hud-history" id="hud-history">
+    <h3>Todos los turnos</h3>
+    <div class="hud-table" id="hud-table" tabindex="0" role="region" aria-label="Latencia de todos los turnos"></div>
+  </div>
+</section>
+
+<script>
+  import { bind, byId, dur, esc, num, panel } from "../scripts/dom";
+  import { engineLabel } from "../voice/engine-factory";
+  import type { ConsoleState, TurnMetrics } from "../voice/store";
+
+  /** p95 targets of docs/07 §8, in ms. */
+  const TARGET_WITH_QUERY = 4000;
+  const TARGET_NO_QUERY = 2500;
+  const CACHE = { live: "en vivo", fresh: "caché ≤ 60 s", stale: "caché vencida" } as const;
+
+  function track(t: TurnMetrics): string {
+    if (t.first_useful_ms === null) {
+      return '<div class="track waiting"><span class="hint">Midiendo este turno…</span></div>';
+    }
+    const target = t.tool_ms !== null ? TARGET_WITH_QUERY : TARGET_NO_QUERY;
+    const max = Math.max(target * 1.12, t.first_useful_ms * 1.08);
+    const pct = (ms: number): string => `${((ms / max) * 100).toFixed(2)}%`;
+    const tool =
+      t.tool_ms !== null && t.tool_start_ms !== null
+        ? `<span class="seg-tool" style="left:${pct(t.tool_start_ms)};width:${pct(t.tool_ms)}" title="Herramienta: ${dur(t.tool_ms)}"></span>`
+        : "";
+    const ack = t.ack_ms !== null ? `<span class="mark-ack" style="left:${pct(t.ack_ms)}" title="Aviso previo: ${dur(t.ack_ms)}"></span>` : "";
+    const within = t.first_useful_ms <= target;
+    return `<div class="track" role="img" aria-label="Primer audio útil a los ${dur(t.first_useful_ms)}; objetivo ${dur(target)}">
+      <span class="fill ${within ? "ok" : "late"}" style="width:${pct(t.first_useful_ms)}"></span>
+      ${tool}${ack}
+      <span class="mark-target" style="left:${pct(target)}"><i>objetivo ${dur(target)}</i></span>
+    </div>`;
+  }
+
+  const late = (t: TurnMetrics): boolean =>
+    t.first_useful_ms !== null && t.first_useful_ms > (t.tool_ms !== null ? TARGET_WITH_QUERY : TARGET_NO_QUERY);
+
+  function stats(t: TurnMetrics): string {
+    const tool =
+      t.tool_ms !== null
+        ? `${dur(t.tool_ms)}${t.rows !== null ? `, ${num(t.rows)} ${t.rows === 1 ? "fila" : "filas"}` : ""}${t.cache ? `, ${CACHE[t.cache]}` : ""}`
+        : "sin consulta";
+    const items: [string, string, string][] = [
+      ["Primer audio útil", `${dur(t.first_useful_ms)}${late(t) ? " · sobre el objetivo" : ""}`, late(t) ? "key late" : "key"],
+      ["Aviso previo", t.ack_ms !== null ? dur(t.ack_ms) : "no hubo", "ack"],
+      ["Herramienta", tool, "tool"],
+      ["Intentos de motor", String(t.attempts), ""],
+      ["Análisis", dur(t.analysis_ms), ""],
+    ];
+    if (t.stop_ms !== null) items.push(["Parada al interrumpir", dur(t.stop_ms), ""]);
+    return `<dl class="stats">${items.map(([k, v, c]) => `<div class="${c}"><dt>${k}</dt><dd class="num">${v}</dd></div>`).join("")}</dl>`;
+  }
+
+  function historyRow(t: TurnMetrics): string {
+    return `<tr>
+      <th scope="row">${t.n}</th>
+      <td class="q">${esc(t.question)}</td>
+      <td>${esc(engineLabel(t.engine))}</td>
+      <td class="num">${t.ack_ms !== null ? dur(t.ack_ms) : "—"}</td>
+      <td class="num">${dur(t.tool_ms)}</td>
+      <td class="num strong">${dur(t.first_useful_ms)}</td>
+      <td class="num">${t.attempts}</td>
+    </tr>`;
+  }
+
+  function render(s: ConsoleState): void {
+    const main = byId("hud-main");
+    const engine = byId("hud-engine");
+    const table = byId("hud-table");
+    const history = byId("hud-history");
+    const last = s.turns[s.turns.length - 1];
+    if (engine) {
+      engine.innerHTML = `<strong>${esc(engineLabel(s.engine))}</strong> <span class="mono">${esc(s.model)}</span>${
+        s.simulated ? ' <span class="tag tag-note" title="No son mediciones de un proveedor">tiempos simulados</span>' : ""
+      }`;
+    }
+    if (main) {
+      main.innerHTML = last
+        ? `<p class="turn">Turno ${last.n}<span class="q">${esc(last.question)}</span></p>${track(last)}${stats(last)}`
+        : '<p class="board-empty">Tras cada turno: cuánto tardó el primer audio útil y cuánto fue la consulta.</p>';
+    }
+    if (history) history.hidden = s.turns.length < 2;
+    if (table) {
+      table.innerHTML = `<table>
+        <thead><tr><th scope="col">Turno</th><th scope="col">Pregunta</th><th scope="col">Motor</th><th scope="col">Aviso</th><th scope="col">Herramienta</th><th scope="col">Primer audio útil</th><th scope="col">Intentos</th></tr></thead>
+        <tbody>${[...s.turns].reverse().map(historyRow).join("")}</tbody>
+      </table>`;
+    }
+  }
+
+  panel("hud", () => bind(["latency", "meta"], render));
+</script>
+
+<style is:global>
+  .hud-meta p {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+  }
+
+  .hud-meta strong {
+    color: var(--ink);
+  }
+
+  .hud-meta .mono {
+    font-size: var(--t-xs);
+  }
+
+  .hud-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-3);
+    min-width: 0;
+  }
+
+  .hud .turn {
+    display: flex;
+    gap: var(--s-2);
+    min-width: 0;
+    font-size: var(--t-sm);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .hud .turn .q {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink-3);
+    font-weight: 400;
+  }
+
+  .hud .track {
+    position: relative;
+    height: 1.25rem;
+    margin-bottom: 1.1rem;
+    border-radius: var(--r-pill);
+    background: var(--subtle-2);
+  }
+
+  .hud .track.waiting {
+    display: grid;
+    place-items: center;
+    margin-bottom: 0;
+  }
+
+  .hud .track .hint {
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .hud .track > span {
+    position: absolute;
+  }
+
+  .hud .fill {
+    inset: 0 auto 0 0;
+    border-radius: var(--r-pill);
+    background: var(--blue-400);
+    transition: width 0.5s var(--ease);
+  }
+
+  /* Over the target: darker and hatched, so it reads without a warning hue. */
+  .hud .fill.late {
+    background: repeating-linear-gradient(-45deg, var(--blue-900) 0 6px, var(--blue-700) 6px 12px);
+  }
+
+  .hud .seg-tool {
+    top: 4px;
+    bottom: 4px;
+    min-width: 4px;
+    border-radius: var(--r-pill);
+    background: var(--violet-700);
+    box-shadow: 0 0 0 1.5px var(--card);
+  }
+
+  .hud .mark-ack {
+    top: 50%;
+    width: 0.75rem;
+    height: 0.75rem;
+    translate: -50% -50%;
+    rotate: 45deg;
+    background: var(--violet-300);
+    border: 2px solid var(--card);
+  }
+
+  .hud .mark-target {
+    top: -3px;
+    bottom: -3px;
+    width: 0;
+    border-left: 2px dashed var(--ink);
+  }
+
+  .hud .mark-target i {
+    position: absolute;
+    top: 100%;
+    right: 4px;
+    color: var(--ink-3);
+    font-size: 0.6875rem;
+    font-style: normal;
+    white-space: nowrap;
+  }
+
+  .hud .stats {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--s-3) var(--s-5);
+  }
+
+  .hud .stats dt {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    line-height: 1.3;
+  }
+
+  .hud .stats .key dt::before,
+  .hud .stats .ack dt::before,
+  .hud .stats .tool dt::before {
+    content: "";
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 2px;
+  }
+
+  .hud .stats .key dt::before { background: var(--blue-400); }
+  .hud .stats .ack dt::before { background: var(--violet-300); rotate: 45deg; }
+  .hud .stats .tool dt::before { background: var(--violet-700); }
+
+  .hud .stats dd {
+    font-size: var(--t-sm);
+    font-weight: 650;
+  }
+
+  .hud .stats .key dd {
+    font-family: var(--font-display);
+    font-size: var(--t-lg);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    color: var(--primary-ink);
+  }
+
+  .hud-history {
+    margin-top: var(--s-5);
+  }
+
+  .hud-history h3 {
+    margin-bottom: var(--s-2);
+    font-family: var(--font-body);
+    font-size: var(--t-sm);
+    letter-spacing: 0;
+  }
+
+  .hud-table {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+  }
+
+  .hud-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--t-sm);
+  }
+
+  .hud-table th,
+  .hud-table td {
+    padding: 0.5rem 0.7rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .hud-table tbody tr:last-child > * {
+    border-bottom: 0;
+  }
+
+  .hud-table thead th {
+    background: var(--subtle);
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    font-weight: 600;
+  }
+
+  .hud-table td.q {
+    max-width: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hud-table td.strong {
+    font-weight: 700;
+    color: var(--primary-ink);
+  }
+</style>

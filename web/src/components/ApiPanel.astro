@@ -1,0 +1,256 @@
+---
+/**
+ * «API en vivo» (F-11, A-24): every query with its SoQL, time, rows, source,
+ * cutoff, cache badge (live / fresh / stale) and a «Reconsultar» button.
+ */
+---
+
+<section class="card board-card api" id="api" data-testid="api-panel" data-section="api" aria-labelledby="api-title">
+  <header class="board-head">
+    <h2 id="api-title">API en vivo <b class="count num" id="api-count" hidden></b></h2>
+    <p id="api-origin"></p>
+  </header>
+  <ol class="api-list board-scroll" id="api-list" aria-live="polite" tabindex="0" aria-label="Consultas a datos.gov.co"></ol>
+</section>
+
+<script>
+  import { bind, byId, panel, reconcile } from "../scripts/dom";
+  import { evidenceBody } from "../scripts/evidence";
+  import { USING_MOCKS } from "../voice/api";
+  import * as controller from "../voice/controller";
+
+  panel("api", (root) => {
+    const list = byId("api-list");
+    const origin = byId("api-origin");
+    if (origin) {
+      origin.textContent = USING_MOCKS ? "Sin backend: respuestas grabadas el 9-oct-2026." : "Consultas a datos.gov.co, de la más reciente a la más antigua.";
+    }
+    root.addEventListener("click", (e) => {
+      const id = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-requery]")?.dataset.requery;
+      if (id) void controller.requery(id);
+    });
+    return bind(["tools"], (s) => {
+      const count = byId("api-count");
+      if (count) {
+        count.hidden = s.tools.length === 0;
+        count.textContent = String(s.tools.length);
+      }
+      if (!list) return;
+      // Keyed update: «Reconsultar» repaints only its own entry and keeps keyboard focus.
+      reconcile(
+        list,
+        s.tools.length
+          ? [...s.tools].reverse().map((t) => ({
+              key: t.tool_call_id,
+              cls: `api-item${t.invalidated ? " invalidated" : ""}`,
+              html: evidenceBody(t, s),
+              testid: "evidence-card",
+            }))
+          : [{ key: "empty", cls: "board-empty", html: "Cada consulta aparece aquí con su SoQL, tiempo, filas, fuente y corte." }],
+      );
+    });
+  });
+</script>
+
+<style is:global>
+  .api .count {
+    display: inline-block;
+    min-width: 1.5rem;
+    margin-left: var(--s-1);
+    padding: 0 0.4rem;
+    border-radius: var(--r-pill);
+    background: var(--primary-soft);
+    color: var(--primary-ink);
+    font-family: var(--font-body);
+    font-size: var(--t-xs);
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.5rem;
+    text-align: center;
+    vertical-align: 0.15em;
+  }
+
+  .api-item {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-4) 0;
+    border-top: 1px solid var(--border);
+    min-width: 0;
+  }
+
+  .api-item:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .api-item .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-2);
+  }
+
+  .api-item .head code {
+    color: var(--primary-ink);
+    font-size: var(--t-sm);
+    font-weight: 700;
+  }
+
+  .api-item .args {
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .api-item .soql {
+    margin: 0;
+    padding: var(--s-3) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--code-bg);
+    color: var(--code-ink);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .soql .kw { color: var(--code-kw); font-weight: 600; }
+  .soql .fn { color: var(--code-fn); }
+  .soql .str { color: var(--code-str); }
+
+  .api-item .meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-4);
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .meta strong {
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  .api-item .value {
+    color: var(--ink-2);
+  }
+
+  .api-item .value strong {
+    font-family: var(--font-display);
+    font-size: var(--t-lg);
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+
+  .api-item .groups {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .api-item .groups li {
+    display: grid;
+    grid-template-columns: minmax(0, 11rem) minmax(2rem, 1fr) 4.2rem;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .groups .k {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+
+  .api-item .groups .bar {
+    height: 0.6rem;
+    border-radius: 3px;
+    background: var(--subtle-2);
+  }
+
+  .api-item .groups .bar i {
+    display: block;
+    height: 100%;
+    min-width: 3px;
+    border-radius: 3px;
+    background: var(--blue-500);
+  }
+
+  .api-item .groups .v {
+    text-align: right;
+    font-weight: 700;
+  }
+
+  .api-item .unit,
+  .api-item .src {
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    line-height: 1.45;
+  }
+
+  .api-item .warnings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1);
+  }
+
+  .api-item .warnings li {
+    padding: 0.05rem 0.6rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill);
+    color: var(--ink-2);
+    font-size: var(--t-xs);
+    font-weight: 550;
+  }
+
+  .api-item .err {
+    color: var(--danger);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .requery {
+    font-size: var(--t-xs);
+    color: var(--ink-2);
+  }
+
+  .api-item .requery.ok {
+    color: var(--primary-ink);
+    font-weight: 650;
+  }
+
+  .api-item .requery.bad {
+    color: var(--danger);
+    font-weight: 650;
+  }
+
+  .api-item .requery-btn {
+    justify-self: start;
+  }
+
+  .api-item .requery-btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: progress;
+  }
+
+  .api-item .waiting {
+    color: var(--accent-ink);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .void {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    color: var(--accent-ink);
+    font-size: var(--t-xs);
+    font-weight: 650;
+  }
+
+  .api-item.invalidated > :not(.void) {
+    opacity: 0.5;
+  }
+
+  .api-item.invalidated .value strong {
+    text-decoration: line-through;
+  }
+</style>

@@ -1,0 +1,458 @@
+---
+/**
+ * The conversation as chat bubbles: agent on the left, person on the right.
+ * Nothing technical is shown here. An answer backed by a query carries one
+ * discreet line with the source and its cutoff; SoQL, timings and evidence
+ * live on the admin board.
+ *
+ * The composer sits at the bottom edge. On phones and upright tablets it also
+ * holds the talk button, so the microphone is always under the thumb.
+ */
+import Mic from "@lucide/astro/icons/mic";
+import Send from "@lucide/astro/icons/send";
+import Square from "@lucide/astro/icons/square";
+import brief from "../../mocks/brief.json";
+
+const questions = brief.suggested_questions.slice(0, 4);
+---
+
+<section class="chat card" id="chat" data-testid="chat" aria-label="Conversación">
+  <div class="chat-scroll" id="chat-scroll" tabindex="0" role="region" aria-label="Mensajes">
+    <div class="chat-empty" id="chat-empty">
+      <p class="lead">Hola. Pregúntame por las IPS de Colombia.</p>
+      <ul class="chips" id="chips">
+        {
+          questions.map((q) => (
+            <li>
+              <button type="button" data-q={q}>{q}</button>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+    <ol class="msgs" id="msgs" aria-live="off"></ol>
+  </div>
+
+  <form class="composer" id="ask-form">
+    <button class="mic" type="button" id="btn-mic" data-testid="mic-button-composer" data-running="false" aria-label="Hablar" title="Hablar">
+      <span class="when-stopped"><Mic aria-hidden="true" /></span>
+      <span class="when-running"><Square aria-hidden="true" /></span>
+    </button>
+    <label class="sr-only" for="ask-input">Escribe tu pregunta</label>
+    <input id="ask-input" data-testid="ask-input" type="text" autocomplete="off" enterkeyhint="send" placeholder="Escribe tu pregunta" />
+    <button class="send" type="submit" data-testid="send-button" aria-label="Enviar" title="Enviar"><Send aria-hidden="true" /></button>
+  </form>
+</section>
+
+<script>
+  import { bind, byId, esc, icon, panel, reconcile, type KeyedItem } from "../scripts/dom";
+  import { citeLine } from "../scripts/evidence";
+  import * as controller from "../voice/controller";
+  import { getState, type ConsoleState, type Notice, type Utterance } from "../voice/store";
+
+  /** Agent text split into what was heard and what was generated but never played. */
+  function agentText(u: Utterance): string {
+    if (u.delivered_text === undefined) return esc(u.text);
+    const heard = u.delivered_text;
+    const rest = u.text.startsWith(heard) ? u.text.slice(heard.length) : "";
+    if (!rest.trim()) return esc(heard);
+    return `${esc(heard)}<span class="unheard" title="No llegó a oírse">${esc(rest)}</span>`;
+  }
+
+  function userText(u: Utterance): string {
+    if (!u.correction) return esc(u.text);
+    return `<s class="orig">${esc(u.text)}</s><span class="fix-arrow"><span class="sr-only">corregido a</span>${icon("arrow-right")}</span><span class="fixed">${esc(u.correction.text)}</span>`;
+  }
+
+  function bubble(u: Utterance, cite: string): KeyedItem {
+    const typing = u.final ? "" : `<p class="typing"><span class="sr-only">${u.role === "agent" ? "Respondiendo" : "Escuchando"}</span><i></i><i></i><i></i></p>`;
+    const who = u.role === "agent" ? "Asistente" : "Tú";
+    const note = u.delivered_text !== undefined ? '<p class="msg-note">Interrumpido</p>' : "";
+    return {
+      key: u.id,
+      cls: `msg from-${u.role}${u.final ? "" : " partial"}${u.kind === "ack" ? " is-ack" : ""}`,
+      testid: `bubble-${u.role}`,
+      html: `<div class="bubble" data-testid="bubble"><span class="sr-only">${who}:</span><p class="text">${u.role === "agent" ? agentText(u) : userText(u)}</p>${typing}${note}</div>${cite ? `<p class="cite" data-testid="source-cite">${cite}</p>` : ""}`,
+    };
+  }
+
+  function errorItem(n: Notice): KeyedItem {
+    return {
+      key: `n-${n.id}`,
+      cls: "msg system",
+      testid: "chat-error",
+      html: `<p>${icon("triangle-alert")}<span>${esc(n.text)}</span></p>`,
+    };
+  }
+
+  /** Utterances in order; the last answer of each turn carries the source line. */
+  function timeline(s: ConsoleState): KeyedItem[] {
+    const items: KeyedItem[] = [];
+    // Session and engine notices are for the admin board; only real errors interrupt the chat.
+    const errors = s.notices.filter((n) => n.kind === "error");
+    const lastOfTurn = new Map<string, string>();
+    for (const u of s.utterances) if (u.turn_id && u.role === "agent" && u.kind !== "ack") lastOfTurn.set(u.turn_id, u.id);
+    for (const u of s.utterances) {
+      while (errors[0] && errors[0].t <= u.t_start) items.push(errorItem(errors.shift()!));
+      let cite = "";
+      if (u.final && u.turn_id && lastOfTurn.get(u.turn_id) === u.id) {
+        for (const t of s.tools) {
+          if (t.turn_id === u.turn_id) cite ||= citeLine(t, s);
+        }
+      }
+      items.push(bubble(u, cite));
+    }
+    for (const n of errors) items.push(errorItem(n));
+    return items;
+  }
+
+  panel("chat", () => {
+    const scroll = byId("chat-scroll");
+    const msgs = byId("msgs");
+    const empty = byId("chat-empty");
+    const askForm = byId<HTMLFormElement>("ask-form");
+    const askInput = byId<HTMLInputElement>("ask-input");
+    const mic = byId<HTMLButtonElement>("btn-mic");
+    // Set when the reader sends something: their own message must come into view.
+    let jumpToEnd = false;
+
+    const render = (s: ConsoleState): void => {
+      if (!scroll || !msgs || !empty) return;
+      const pinned = jumpToEnd || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
+      const items = timeline(s);
+      empty.hidden = items.length > 0;
+      reconcile(msgs, items);
+      if (pinned) scroll.scrollTop = scroll.scrollHeight;
+      if (jumpToEnd && s.utterances.some((u) => u.role === "agent" && !u.final)) jumpToEnd = false;
+    };
+
+    const renderControls = (s: ConsoleState): void => {
+      if (!mic) return;
+      mic.dataset.running = String(s.running);
+      const label = s.running ? "Detener" : "Hablar";
+      mic.setAttribute("aria-label", label);
+      mic.title = label;
+    };
+
+    mic?.addEventListener("click", () => (getState().running ? controller.stop() : void controller.start()));
+    askForm?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!askInput || !askInput.value.trim()) return;
+      jumpToEnd = true;
+      controller.sendText(askInput.value);
+      askInput.value = "";
+    });
+    byId("chips")?.addEventListener("click", (e) => {
+      const q = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-q]")?.dataset.q;
+      if (!q) return;
+      jumpToEnd = true;
+      controller.sendText(q);
+    });
+
+    const unbindLog = bind(["transcript", "tools", "notices"], render);
+    const unbindControls = bind(["meta", "status"], renderControls);
+    return () => {
+      unbindLog();
+      unbindControls();
+    };
+  });
+</script>
+
+<style is:global>
+  .chat {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .chat-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--s-5) clamp(var(--s-3), 2.5vw, var(--s-5)) var(--s-3);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  .chat-empty {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: var(--s-5);
+    min-height: 100%;
+    max-width: 30rem;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .chat-empty .lead {
+    font-family: var(--font-display);
+    font-size: var(--t-lg);
+    font-weight: 650;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--s-2);
+  }
+
+  .chips button {
+    min-height: var(--tap);
+    padding: 0.4rem var(--s-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill);
+    background: var(--card);
+    color: var(--primary-ink);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    line-height: 1.25;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .chips button:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  /* ── Messages ──────────────────────────────────────────────────────────── */
+
+  .msgs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+
+  .msg {
+    position: relative;
+    display: grid;
+    gap: var(--s-1);
+    max-width: min(86%, 38rem);
+  }
+
+  .msg.from-agent {
+    align-self: flex-start;
+    justify-items: start;
+  }
+
+  .msg.from-user {
+    align-self: flex-end;
+    justify-items: end;
+  }
+
+  .msg.from-user + .msg.from-agent,
+  .msg.from-agent + .msg.from-user,
+  .msg.system {
+    margin-top: var(--s-3);
+  }
+
+  .bubble {
+    /* Anchors the visually hidden speaker label, so it cannot stretch the document. */
+    position: relative;
+    padding: var(--s-3) var(--s-4);
+    border-radius: 20px;
+    background: var(--subtle-2);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .from-agent .bubble {
+    border-bottom-left-radius: 6px;
+  }
+
+  .from-user .bubble {
+    border-bottom-right-radius: 6px;
+    background: var(--accent);
+    color: var(--on-dark);
+  }
+
+  .is-ack .bubble {
+    padding-block: var(--s-2);
+    background: transparent;
+    border: 1px dashed var(--border-strong);
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+  }
+
+  .bubble .unheard {
+    color: var(--ink-3);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+
+  .bubble .orig {
+    color: var(--on-dark-2);
+  }
+
+  .bubble .fix-arrow {
+    display: inline-flex;
+    margin: 0 0.3em;
+    vertical-align: -0.15em;
+  }
+
+  .bubble .fixed {
+    font-weight: 650;
+  }
+
+  .msg-note {
+    margin-top: 2px;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .cite {
+    padding-left: var(--s-4);
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 1rem;
+    opacity: 0.7;
+  }
+
+  .typing i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: typing 1.1s infinite ease-in-out;
+  }
+
+  .typing i:nth-of-type(2) { animation-delay: 0.15s; }
+  .typing i:nth-of-type(3) { animation-delay: 0.3s; }
+
+  @keyframes typing {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
+  }
+
+  .msg.system {
+    align-self: center;
+    max-width: 92%;
+  }
+
+  .msg.system p {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .msg.system svg {
+    margin-top: 0.15em;
+  }
+
+  /* ── Composer ──────────────────────────────────────────────────────────── */
+
+  .composer {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-3) clamp(var(--s-3), 2.5vw, var(--s-4));
+    padding-bottom: max(var(--s-3), env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--card);
+  }
+
+  .composer input {
+    flex: 1;
+    min-width: 0;
+    min-height: 3rem;
+    padding: 0 var(--s-4);
+    border: 1px solid var(--border-field);
+    border-radius: var(--r-pill);
+    background: var(--subtle);
+  }
+
+  .composer input:focus {
+    background: var(--card);
+  }
+
+  .composer input::placeholder {
+    color: var(--ink-3);
+    opacity: 1;
+  }
+
+  .composer .mic,
+  .composer .send {
+    display: grid;
+    place-items: center;
+    flex: none;
+    border: 0;
+    border-radius: 50%;
+    color: var(--on-dark);
+    transition:
+      background-color 0.15s,
+      transform 0.15s var(--ease);
+  }
+
+  .composer .mic:active,
+  .composer .send:active {
+    transform: scale(0.94);
+  }
+
+  .composer .send {
+    width: 3rem;
+    height: 3rem;
+    background: var(--primary);
+    font-size: 1.1rem;
+  }
+
+  .composer .send:hover {
+    background: var(--primary-ink);
+  }
+
+  /* Talk button: the largest target on a phone. Hidden on wide screens, where
+     the same control sits under the avatar. */
+  .composer .mic {
+    width: 3.5rem;
+    height: 3.5rem;
+    background: var(--accent);
+    box-shadow: 0 8px 18px -10px var(--accent);
+    font-size: 1.35rem;
+  }
+
+  /* Hover never overrides the running («Detener») state. */
+  .composer .mic:not([data-running="true"]):hover {
+    background: var(--accent-ink);
+  }
+
+  .composer .mic span {
+    display: grid;
+  }
+
+  .composer .mic[data-running="true"] {
+    background: var(--primary-ink);
+    box-shadow: none;
+  }
+
+  .composer .mic[data-running="true"] .when-stopped,
+  .composer .mic[data-running="false"] .when-running {
+    display: none;
+  }
+
+  @media (min-width: 1024px) {
+    .composer .mic {
+      display: none;
+    }
+  }
+</style>

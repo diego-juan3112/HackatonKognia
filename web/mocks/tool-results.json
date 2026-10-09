@@ -1,0 +1,251 @@
+{
+  "_note": "Evidence envelopes (docs/09 §5) recorded against datos.gov.co on 2026-10-09. tool_call_id, turn_id, state_version and fetched_at are overwritten by FakeEngine at runtime.",
+  "top_beds_by_municipality": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 1,
+    "status": "ok",
+    "data": {
+      "groups": [
+        { "key": "BOGOTÁ · Bogotá D.C", "value": 16193 },
+        { "key": "MEDELLÍN · Antioquia", "value": 6280 },
+        { "key": "CALI · Cali", "value": 5876 }
+      ],
+      "unit": "camas",
+      "complete": true
+    },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-top-beds-by-municipality",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "camas",
+      "filters": { "capacity_group": "CAMAS" },
+      "warnings": ["CUTOFF_2022", "MIXED_TYPES", "NOT_AVAILABILITY", "DISTRICT_AS_DEPARTMENT"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT municipio, departamento, sum(num_cantidad_capacidad_instalada) AS value WHERE nom_grupo_capacidad = 'CAMAS' GROUP BY municipio, departamento ORDER BY value DESC LIMIT 3",
+      "ms": 538,
+      "rows": 3
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": {}
+  },
+  "beds_medellin": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 1,
+    "status": "ok",
+    "data": { "value": 6280, "unit": "camas", "complete": true },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-beds-medellin",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "camas",
+      "filters": { "capacity_group": "CAMAS", "municipality": "MEDELLÍN", "department": "Antioquia" },
+      "warnings": ["CUTOFF_2022", "MIXED_TYPES", "NOT_AVAILABILITY"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT sum(num_cantidad_capacidad_instalada) AS value WHERE nom_grupo_capacidad = 'CAMAS' AND municipio = 'MEDELLÍN'",
+      "ms": 505,
+      "rows": 1
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": { "confirmed_filters": { "municipality": "MEDELLÍN", "department": "Antioquia" } }
+  },
+  "correct_to_melgar": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 2,
+    "status": "ok",
+    "data": { "field": "municipality", "value": "MELGAR", "resolved": "Melgar, Tolima", "invalidated_evidence": 1 },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-lexicon-melgar",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "rows",
+      "filters": { "municipality": "MELGAR" },
+      "warnings": ["FILTER_NORMALIZED"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT departamento, count(*) AS n WHERE municipio = 'MELGAR' GROUP BY departamento",
+      "ms": 460,
+      "rows": 1
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": { "confirmed_filters": { "municipality": "MELGAR", "department": "Tolima" }, "last_evidence_refs": [] }
+  },
+  "beds_melgar": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 2,
+    "status": "ok",
+    "data": { "value": 9, "unit": "camas", "complete": true },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-beds-melgar",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "camas",
+      "filters": { "capacity_group": "CAMAS", "municipality": "MELGAR", "department": "Tolima" },
+      "warnings": ["CUTOFF_2022", "MIXED_TYPES", "NOT_AVAILABILITY"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT sum(num_cantidad_capacidad_instalada) AS value WHERE nom_grupo_capacidad = 'CAMAS' AND municipio = 'MELGAR'",
+      "ms": 523,
+      "rows": 1
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": {}
+  },
+  "providers_by_nature": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 1,
+    "status": "ok",
+    "data": {
+      "groups": [
+        { "key": "Privada", "value": 8308 },
+        { "key": "Pública", "value": 998 },
+        { "key": "Mixta", "value": 14 }
+      ],
+      "unit": "prestadores",
+      "complete": true
+    },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-providers-by-nature",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "prestadores",
+      "filters": {},
+      "warnings": ["CUTOFF_2022"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT naturaleza, count(DISTINCT c_digo_prestador) AS value GROUP BY naturaleza ORDER BY value DESC",
+      "ms": 663,
+      "rows": 3
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": {}
+  },
+  "providers_total": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 1,
+    "status": "ok",
+    "data": { "value": 9320, "unit": "prestadores", "complete": true },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-providers-total",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "prestadores",
+      "filters": {},
+      "warnings": ["CUTOFF_2022", "ROWS_ARE_CAPACITY_CATEGORIES"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT count(DISTINCT c_digo_prestador) AS value",
+      "ms": 540,
+      "rows": 1
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": {}
+  },
+  "beds_total": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 1,
+    "status": "ok",
+    "data": { "value": 97036, "unit": "camas", "complete": true },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-beds-total",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "camas",
+      "filters": { "capacity_group": "CAMAS" },
+      "warnings": ["CUTOFF_2022", "MIXED_TYPES", "NOT_AVAILABILITY"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT sum(num_cantidad_capacidad_instalada) AS value WHERE nom_grupo_capacidad = 'CAMAS'",
+      "ms": 479,
+      "rows": 1
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": {}
+  },
+  "providers_bogota": {
+    "schema_version": "1",
+    "tool_call_id": "",
+    "turn_id": "",
+    "state_version": 1,
+    "status": "ok",
+    "data": { "value": 1270, "unit": "prestadores", "complete": true },
+    "evidence": {
+      "dataset_id": "s2ru-bqt6",
+      "source_url": "https://www.datos.gov.co/resource/s2ru-bqt6.json",
+      "query_fingerprint": "sha256:mock-providers-bogota",
+      "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+      "fetched_at": "",
+      "cache_status": "live",
+      "complete": true,
+      "unit": "prestadores",
+      "filters": { "department": "Bogotá D.C" },
+      "warnings": ["CUTOFF_2022", "FILTER_NORMALIZED"]
+    },
+    "trace": {
+      "engine": "soda3",
+      "soql": "SELECT count(DISTINCT c_digo_prestador) AS value WHERE departamento = 'Bogotá D.C'",
+      "ms": 560,
+      "rows": 1
+    },
+    "error": null,
+    "next_cursor": null,
+    "context_patch": {}
+  }
+}

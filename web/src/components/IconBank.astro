@@ -1,0 +1,32 @@
+---
+/**
+ * Lucide icons used by markup that is rendered in the browser (transcript rows,
+ * API entries). Each one is server-rendered into a <template> and cloned by
+ * `icon(name)` in src/scripts/dom.ts.
+ */
+import ArrowRight from "@lucide/astro/icons/arrow-right";
+import CheckCheck from "@lucide/astro/icons/check-check";
+import EarOff from "@lucide/astro/icons/ear-off";
+import Info from "@lucide/astro/icons/info";
+import RefreshCw from "@lucide/astro/icons/refresh-cw";
+import Split from "@lucide/astro/icons/split";
+import TriangleAlert from "@lucide/astro/icons/triangle-alert";
+
+const icons = {
+  "arrow-right": ArrowRight,
+  "check-check": CheckCheck,
+  "ear-off": EarOff,
+  info: Info,
+  "refresh-cw": RefreshCw,
+  split: Split,
+  "triangle-alert": TriangleAlert,
+};
+---
+
+{
+  Object.entries(icons).map(([name, Icon]) => (
+    <template id={`icon-${name}`}>
+      <Icon aria-hidden="true" />
+    </template>
+  ))
+}

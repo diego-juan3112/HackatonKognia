@@ -1,0 +1,33 @@
+{
+  "_note": "Scripted analyst output (docs/10 §6). Keyed by the script cue of the user utterance. 'text' is what the analyst returns without voice consent; 'voice' is the acoustic estimate that only exists with consent. Fusion is done in the client mock exactly as docs/10 describes.",
+  "q_top_beds": {
+    "analysis_ms": 840,
+    "text": { "sentiment": "neutral", "emotion": "neutral", "state_hint": "interés", "cues": ["pregunta directa"] },
+    "voice": { "sentiment": "neutral", "emotion": "neutral", "state_hint": "interés", "cues": ["ritmo pausado", "tono estable"] }
+  },
+  "q_beds_medellin": {
+    "analysis_ms": 910,
+    "text": { "sentiment": "neutral", "emotion": "neutral", "state_hint": "interés", "cues": ["pregunta de seguimiento"] },
+    "voice": { "sentiment": "neutral", "emotion": "neutral", "state_hint": "interés", "cues": ["ritmo pausado"] }
+  },
+  "fix_melgar": {
+    "analysis_ms": 1120,
+    "text": { "sentiment": "neutral", "emotion": "neutral", "state_hint": "desconocido", "cues": ["corrección explícita"] },
+    "voice": { "sentiment": "negative", "emotion": "enojo", "state_hint": "frustración", "cues": ["interrumpió al agente", "tono elevado", "ritmo rápido"] }
+  },
+  "ask_direct": {
+    "analysis_ms": 760,
+    "text": { "sentiment": "negative", "emotion": "enojo", "state_hint": "frustración", "cues": ["«me estás confundiendo»", "pide brevedad"] },
+    "voice": { "sentiment": "negative", "emotion": "enojo", "state_hint": "frustración", "cues": ["tono elevado"] }
+  },
+  "thanks": {
+    "analysis_ms": 690,
+    "text": { "sentiment": "positive", "emotion": "alegría", "state_hint": "satisfacción", "cues": ["agradece"] },
+    "voice": { "sentiment": "positive", "emotion": "alegría", "state_hint": "satisfacción", "cues": ["tono relajado"] }
+  },
+  "default": {
+    "analysis_ms": 800,
+    "text": { "sentiment": "neutral", "emotion": "neutral", "state_hint": "interés", "cues": ["pregunta directa"] },
+    "voice": { "sentiment": "neutral", "emotion": "neutral", "state_hint": "interés", "cues": ["tono estable"] }
+  }
+}

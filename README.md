@@ -41,9 +41,21 @@ fusionarlo. Al cierre se listan aquí los módulos generados por IA.
 
 ## Cómo correrlo
 
-Las instrucciones de arranque se completan cuando exista el código
-([docs/12](docs/12-guia-de-trabajo-2-personas.md) §3–§6 y [docs/11](docs/11-despliegue.md)).
-Variables: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `DATOS_GOV_APP_TOKEN`, `SESSION_SIGNING_KEY` (nunca en git).
+Monorepo: el front vive en `web/` (Astro) y la API en `src/` (FastAPI). Claves en `.env` de la
+raíz, nunca en git: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID`,
+`DATOS_GOV_APP_TOKEN`, `SESSION_SIGNING_KEY`.
+
+```bash
+cd web && npm ci          # una vez
+npm run dev               # http://localhost:4321  (sin backend: motor simulado)
+npm run build             # sitio estático en web/dist
+npm test                  # pruebas de contrato
+```
+
+Con backend: definir `PUBLIC_API_URL` antes de `npm run dev` o del build. Mientras la API de
+`src/` se despliega, `node web/dev/dev-backend.mjs` sirve un sustituto local en
+`http://localhost:8787` (solo desarrollo). Pantallas: `/` portada, `/consola` usuario,
+`/admin` administrador. Despliegue: [docs/11](docs/11-despliegue.md).
 
 ## Límites honestos
 

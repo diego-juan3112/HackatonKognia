@@ -1,0 +1,95 @@
+---
+/**
+ * Conversation screen: talk to the agent and read the conversation. That is all.
+ * Everything technical (queries, timings, emotions, engine) is on /admin, which
+ * reads the same store.
+ */
+import Base from "../layouts/Base.astro";
+import AvatarStage from "../components/AvatarStage.astro";
+import Chat from "../components/Chat.astro";
+import IconBank from "../components/IconBank.astro";
+---
+
+<Base title="Conversación · IPS en Vivo" description="Habla con el registro de IPS de Colombia (REPS) y lee la conversación." fill>
+  <h1 class="sr-only">Conversación</h1>
+  <div class="console" id="console">
+    <AvatarStage />
+    <Chat />
+  </div>
+  <IconBank />
+</Base>
+
+<script>
+  import { panel } from "../scripts/dom";
+  import * as controller from "../voice/controller";
+
+  panel("console", () => {
+    // The cover page links here with ?iniciar=1 or ?q=…; consume them once.
+    const url = new URL(location.href);
+    const q = url.searchParams.get("q");
+    const autostart = url.searchParams.has("iniciar");
+    if (!q && !autostart) return;
+    url.searchParams.delete("q");
+    url.searchParams.delete("iniciar");
+    history.replaceState(history.state, "", url);
+    if (q) controller.sendText(q);
+    else void controller.start();
+  });
+</script>
+
+<style>
+  /* Phone and upright tablet: compact avatar on top, chat below, composer at the bottom edge. */
+  .console {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: clamp(150px, 30dvh, 280px) minmax(0, 1fr);
+    gap: var(--s-3);
+    flex: 1;
+    min-height: 0;
+    padding: var(--s-3) var(--s-3) 0;
+  }
+
+  .console :global(.chat) {
+    border-bottom: 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+
+  @media (min-width: 768px) {
+    .console {
+      grid-template-rows: clamp(260px, 40dvh, 520px) minmax(0, 1fr);
+      gap: var(--s-4);
+      padding: var(--s-4) var(--gutter) 0;
+    }
+  }
+
+  /* Landscape tablet and desktop: avatar and chat side by side. */
+  @media (min-width: 1024px) {
+    .console {
+      grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+      grid-template-rows: minmax(0, 1fr);
+      gap: var(--s-5);
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+      padding: var(--s-5) var(--gutter);
+    }
+
+    .console :global(.chat) {
+      border-bottom: 1px solid var(--border);
+      border-radius: var(--r-lg);
+    }
+  }
+
+  /* Phone on its side: the page scrolls, so give each part a real height. */
+  @media (max-height: 479px) {
+    .console {
+      grid-template-rows: 70dvh 90dvh;
+    }
+  }
+
+  @media (max-height: 479px) and (min-width: 1024px) {
+    .console {
+      grid-template-rows: 100dvh;
+    }
+  }
+</style>

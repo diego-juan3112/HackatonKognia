@@ -1,0 +1,308 @@
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--t-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button,
+select {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+svg.lucide {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  stroke-width: 2;
+}
+
+:focus-visible {
+  outline: 2.5px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-dark);
+}
+
+/* `position: absolute` needs a positioned ancestor inside scrolling lists
+   (bubbles, transcript rows), or it stretches the document. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip {
+  position: absolute;
+  left: var(--s-4);
+  top: -4rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 var(--s-4);
+  background: var(--primary-ink);
+  color: var(--on-dark);
+  border-radius: var(--r-sm);
+  font-weight: 600;
+}
+
+.skip:focus {
+  top: var(--s-2);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: var(--tap);
+  padding: 0 var(--s-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--t-sm);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.15s var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--subtle-2);
+  border-color: var(--blue-500);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+}
+
+.btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn-primary,
+.btn-talk {
+  min-height: 3.25rem;
+  padding: 0 var(--s-5);
+  border: 0;
+  color: var(--on-dark);
+  font-size: var(--t-base);
+  font-weight: 650;
+}
+
+.btn-primary {
+  background: var(--primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-ink);
+}
+
+/* The one loud control of the product: start talking. */
+.btn-talk {
+  background: var(--accent);
+  box-shadow: 0 10px 22px -12px var(--accent);
+}
+
+/* Hover never overrides the running («Detener») state. */
+.btn-talk:not([data-running="true"]):hover:not(:disabled) {
+  background: var(--accent-ink);
+}
+
+.btn-talk[data-running="true"],
+.btn-talk[data-running="true"]:hover:not(:disabled) {
+  background: var(--primary-ink);
+  box-shadow: none;
+}
+
+/* ── Tags: told apart by shape as well as tone ───────────────────────────── */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.1em 0.65em;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  font-size: var(--t-xs);
+  font-weight: 650;
+  line-height: 1.6;
+  white-space: nowrap;
+  background: var(--subtle-2);
+  color: var(--ink-2);
+}
+
+.tag-live { background: var(--accent-soft); color: var(--accent-ink); }
+.tag-fresh { background: var(--primary-soft); color: var(--primary-ink); }
+.tag-stale { background: var(--card); border-color: var(--blue-500); border-style: dashed; color: var(--primary-ink); }
+.tag-bad { background: var(--danger-soft); color: var(--danger); }
+.tag-quiet { background: var(--subtle-2); color: var(--ink-2); }
+.tag-note { background: var(--card); border-color: var(--border-strong); color: var(--ink-2); }
+.tag-accent { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* live = filled dot, fresh = hollow dot, stale = dashed outline */
+.tag-live::before,
+.tag-fresh::before {
+  content: "";
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+
+.tag-live::before {
+  background: currentColor;
+}
+
+/* ── Native select ───────────────────────────────────────────────────────── */
+
+.select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 var(--s-6) 0 var(--s-3);
+  border: 1px solid var(--border-field);
+  border-radius: var(--r-md);
+  background: var(--card) var(--chevron) no-repeat right 0.7rem center;
+  appearance: none;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.select:hover {
+  border-color: var(--blue-500);
+}
+
+/* ── View transitions ────────────────────────────────────────────────────── */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.28s;
+}
+
+::view-transition-group(orb) {
+  animation-duration: 0.55s;
+  animation-timing-function: var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

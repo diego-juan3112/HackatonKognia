@@ -1,0 +1,57 @@
+{
+  "title": "Relación de IPS públicas y privadas según el nivel de atención y capacidad instalada",
+  "source": {
+    "name": "MinSalud — REPS",
+    "license": "CC BY-SA 4.0",
+    "cutoff_raw": "Fecha corte REPS: Nov  5 2022  1:37PM",
+    "cutoff_date": "2022-11-05",
+    "url": "https://www.datos.gov.co/resource/s2ru-bqt6.json"
+  },
+  "stats": {
+    "rows": 41427,
+    "providers": 9320,
+    "site_codes": 10921,
+    "fetched_at": "2026-10-09T15:10:00Z",
+    "ms": 663
+  },
+  "by_nature": [
+    { "key": "Privada", "value": 8308 },
+    { "key": "Pública", "value": 998 },
+    { "key": "Mixta", "value": 14 }
+  ],
+  "top_departments": [
+    { "key": "Bogotá D.C", "value": 1270 },
+    { "key": "Antioquia", "value": 837 },
+    { "key": "Santander", "value": 597 }
+  ],
+  "limits": [
+    "Capacidad instalada, no disponibilidad",
+    "Sin geolocalización",
+    "Nivel vacío en la mayoría de las IPS"
+  ],
+  "suggested_questions": [
+    "¿Cuántas IPS públicas, privadas y mixtas hay?",
+    "¿Qué municipios tienen más camas?",
+    "¿Cuántas camas hay en total?",
+    "¿Cuántas IPS hay en Bogotá?",
+    "¿Cuántas camas hay en Melgar?"
+  ],
+  "spoken_brief": "Hola. Consulto en vivo el registro de IPS del Ministerio de Salud, con corte a noviembre de 2022: 9.320 prestadores y 10.921 códigos de sede. Pregúntame, por ejemplo: cuántas IPS públicas, privadas y mixtas hay, o qué municipios tienen más camas.",
+  "trace": [
+    {
+      "soql": "SELECT count(*) AS n_rows, count(DISTINCT c_digo_prestador) AS providers, count(DISTINCT c_digo_sede) AS site_codes",
+      "ms": 607,
+      "rows": 1
+    },
+    {
+      "soql": "SELECT naturaleza, count(DISTINCT c_digo_prestador) AS value GROUP BY naturaleza ORDER BY value DESC",
+      "ms": 663,
+      "rows": 3
+    },
+    {
+      "soql": "SELECT departamento, count(DISTINCT c_digo_prestador) AS value GROUP BY departamento ORDER BY value DESC LIMIT 5",
+      "ms": 560,
+      "rows": 5
+    }
+  ]
+}

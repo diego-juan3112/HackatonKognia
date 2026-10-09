@@ -9,3 +9,6 @@ infra/terraform/*.tfstate.backup
 infra/terraform/.terraform.lock.hcl
 .venv-min/
 .vercel/
+web/node_modules
+web/dist
+.astro

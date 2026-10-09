@@ -1,0 +1,149 @@
+---
+/**
+ * Top bar: the brand and two destinations. Nothing else lives here; the engine
+ * and voice selectors belong to the admin board.
+ */
+const path = Astro.url.pathname.replace(/\/$/, "") || "/";
+const nav = [
+  { href: "/consola", label: "Conversación" },
+  { href: "/admin", label: "Administrador" },
+];
+---
+
+<header class="site-header">
+  <a class="brand" href="/" aria-label="IPS en Vivo, ir a la portada">
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true" transition:name="brand-mark">
+      <rect width="40" height="40" rx="12"></rect>
+      <path d="M12 17v6M16.5 13v14M21 16v8M25.5 11v18M30 17v6"></path>
+    </svg>
+    <span class="names">
+      <strong>IPS en Vivo</strong>
+      <span>Registro de IPS de Colombia · REPS, corte 5-nov-2022</span>
+    </span>
+  </a>
+
+  <nav aria-label="Principal">
+    {
+      nav.map(({ href, label }) => (
+        <a href={href} aria-current={path === href ? "page" : undefined}>
+          {label}
+        </a>
+      ))
+    }
+  </nav>
+</header>
+
+<style>
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    min-height: 3.75rem;
+    padding: var(--s-2) var(--gutter);
+    padding-top: max(var(--s-2), env(safe-area-inset-top));
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-3);
+    min-height: var(--tap);
+    min-width: var(--tap);
+    text-decoration: none;
+  }
+
+  .mark {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: none;
+  }
+
+  .mark rect {
+    fill: var(--primary);
+  }
+
+  .mark path {
+    fill: none;
+    stroke: var(--on-dark);
+    stroke-width: 2.6;
+    stroke-linecap: round;
+  }
+
+  .names {
+    display: grid;
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .names strong {
+    font-family: var(--font-display);
+    font-size: var(--t-md);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    white-space: nowrap;
+  }
+
+  .names span {
+    overflow: hidden;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    font-weight: 550;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  nav {
+    display: flex;
+    flex: none;
+    gap: var(--s-1);
+  }
+
+  nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap);
+    padding: 0 var(--s-4);
+    border-radius: var(--r-pill);
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+  }
+
+  nav a:hover {
+    background: var(--subtle-2);
+    color: var(--ink);
+  }
+
+  nav a[aria-current="page"] {
+    background: var(--primary-soft);
+    color: var(--primary-ink);
+  }
+
+  @media (max-width: 760px) {
+    .names span {
+      display: none;
+    }
+  }
+
+  @media (max-width: 460px) {
+    .site-header {
+      gap: var(--s-2);
+    }
+
+    .names {
+      display: none;
+    }
+
+    nav a {
+      padding: 0 var(--s-3);
+    }
+  }
+</style>

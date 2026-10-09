@@ -1,0 +1,30 @@
+---
+/**
+ * The status orb. It persists across view transitions (same canvas, same
+ * animation loop) and morphs between its position on each page.
+ */
+---
+
+<div class="orb" id="orb" transition:name="orb" transition:persist="orb" aria-hidden="true">
+  <canvas></canvas>
+</div>
+
+<script>
+  import { mountOrb } from "../scripts/orb";
+
+  document.addEventListener("astro:page-load", mountOrb);
+</script>
+
+<style>
+  .orb {
+    width: var(--orb-size, 220px);
+    aspect-ratio: 1;
+    flex: none;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
