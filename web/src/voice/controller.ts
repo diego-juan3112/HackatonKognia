@@ -7,7 +7,7 @@
  * analyst calls, style decisions and the user controls.
  */
 import { analyze, DIRECTIVES, inferStyle } from "./analyst";
-import { clonedVoiceEngines, defaultVoiceMode, fetchBrief, fetchVoiceModes, runTool, type ToolContext } from "./api";
+import { clonedVoiceEngines, defaultVoiceMode, fetchBrief, fetchHealth, fetchVoiceModes, runTool, verifyAnswer, type ToolContext } from "./api";
 import { getMicTap } from "./audio/mic-tap";
 import { createEngine, engineInfo, engineLabel, otherEngine, realEngines } from "./engine-factory";
 import type { EngineDeps } from "./fake-engine";
@@ -44,9 +44,27 @@ let engine: VoiceEngine | null = null;
 let unsubscribe: (() => void)[] = [];
 let sessionStart = 0;
 let localSeq = 0;
-let firstQuery = true;
 let attemptsThisTurn = 1;
 let pendingQuestion: string | null = null;
+/** The engine reached a working state at least once in this session. */
+let everConnected = false;
+/** Question to ask again when «Reintentar» restarts a session that could not start. */
+let retryQuestion: string | null = null;
+/** Greeting heard briefly before a question asked at start interrupts it. */
+const GREETING_GRACE_MS = 1200;
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+/** Turns whose answer was already checked: at most one correction per turn (R-25). */
+const verifiedTurns = new Set<string>();
+
+/** Sends the question that waited for the engine, cutting the greeting if it is still playing. */
+function flushPendingQuestion(): void {
+  clearTimeout(pendingTimer);
+  pendingTimer = undefined;
+  if (!pendingQuestion || !engine) return;
+  const q = pendingQuestion;
+  pendingQuestion = null;
+  engine.sendText(q);
+}
 /** Question shown at once while the engine is still busy with the brief. */
 let pendingEcho: { id: string; text: string; shown: boolean } | null = null;
 
@@ -120,14 +138,15 @@ const now = (): number => Math.round(performance.now() - sessionStart);
 const deps: EngineDeps = {
   now,
   getBrief: async () => (await fetchBrief()).brief,
+  // The microphone opens only after «Usar mi voz» (R-26).
+  micAllowed: () => store.getState().voiceAnalysis,
   runTool(call: ToolCallPayload, ctx: ToolContext): Promise<EvidenceEnvelope> {
     // Idempotency: same tool_call_id + state_version reuses the result (docs/08 §5.5).
     const key = `${call.tool_call_id}:${ctx.state_version}`;
     const cached = toolCache.get(key);
     if (cached) return cached;
-    const forceLive = firstQuery;
-    firstQuery = false;
-    const result = runTool(call, canonicalContext(ctx), { forceLive }).then((env) => {
+    // Only «Reconsultar» forces a live query (docs/09 §6).
+    const result = runTool(call, canonicalContext(ctx)).then((env) => {
       store.putEvidence(env);
       applyPatch(env);
       return env;
@@ -193,18 +212,78 @@ function afterEvent(ev: AnyEngineEvent): void {
       preferDirectIfAsked(p.text);
       void runAnalysis(p.utterance_id, p.text, ev.turn_id, ev.state_version, p.t_start, p.t_end, p.t_source !== "local");
     }
-  } else if (ev.type === "status") {
-    if (ev.payload.state === "listening" && pendingQuestion) {
-      const q = pendingQuestion;
-      pendingQuestion = null;
-      engine?.sendText(q);
+    if (p.role === "agent" && p.final && ev.turn_id) void verifyTurn(p.utterance_id, p.text, ev.turn_id);
+  } else if (ev.type === "speech") {
+    // A question asked at start does not wait for the whole greeting: a moment of it, then the answer.
+    if (ev.payload.phase === "start" && ev.payload.kind === "brief" && pendingQuestion && pendingTimer === undefined) {
+      pendingTimer = setTimeout(flushPendingQuestion, GREETING_GRACE_MS);
     }
+  } else if (ev.type === "status") {
+    if (ev.payload.state === "listening" || ev.payload.state === "thinking" || ev.payload.state === "speaking") everConnected = true;
+    if (ev.payload.state === "listening" && pendingQuestion) flushPendingQuestion();
   } else if (ev.type === "error") {
     const code = ev.payload.code;
+    if (!everConnected && (code === "ENGINE_CONNECT_FAILED" || code === "ENGINE_QUOTA")) {
+      failStart();
+      return;
+    }
     if (ev.payload.retryable && (code === "ENGINE_DROPPED" || code === "ENGINE_CONNECT_FAILED" || code === "ENGINE_QUOTA")) {
       void switchEngine(otherEngine(store.getState().engine), code, true);
     }
   }
+}
+
+// ── Figure check (docs/10 §5) ────────────────────────────────────────────────
+
+/**
+ * Checks the first final answer of a turn with tool results against them. If a
+ * figure is not in the evidence it is marked in the bubble and the engine gets
+ * the backend's correction note, once per turn (R-25).
+ */
+async function verifyTurn(utteranceId: string, text: string, turnId: string): Promise<void> {
+  const s = store.getState();
+  const u = s.utterances.find((x) => x.id === utteranceId);
+  if (!u || u.kind === "ack" || u.kind === "brief" || verifiedTurns.has(turnId)) return;
+  const tools = s.tools.filter((t) => t.turn_id === turnId);
+  if (tools.length === 0 || tools.some((t) => t.status === undefined)) return;
+  const envelopes = tools
+    .filter((t) => t.status === "ok" && t.evidence_ref)
+    .map((t) => s.evidence[t.evidence_ref as string])
+    .filter((e): e is EvidenceEnvelope => e !== undefined);
+  if (envelopes.length === 0) return;
+  verifiedTurns.add(turnId);
+  const heard = u.delivered_text ?? text;
+  const result = await verifyAnswer({ turn_id: turnId, text: heard, tool_results: envelopes });
+  if (!result || result.grounded || store.getState().conversation_id !== s.conversation_id) return;
+  store.markUnverified(utteranceId, result.unsupported);
+  if (result.correction && engine?.sendSystemNote) engine.sendSystemNote(result.correction);
+}
+
+/**
+ * The session could not start (backend or engine down): one human notice with
+ * «Reintentar», the question stays on screen and the button goes back to «Hablar».
+ */
+function failStart(): void {
+  retryQuestion = pendingQuestion ?? pendingEcho?.text ?? null;
+  showEcho();
+  const previous = engine;
+  detach();
+  engine = null;
+  pendingQuestion = null;
+  pendingEcho = null;
+  clearTimeout(pendingTimer);
+  pendingTimer = undefined;
+  void previous?.disconnect("start_failed");
+  store.endSession();
+  store.clearErrors();
+  store.pushNotice("error", "No pude conectarme con el servicio de voz en este momento. Revisa tu conexión y pulsa Reintentar.", now(), true);
+}
+
+/** «Reintentar» after a failed start: same question, new session. */
+export function retry(): void {
+  const q = retryQuestion;
+  retryQuestion = null;
+  void start(q ? { question: q } : {});
 }
 
 // ── Analyst and style ────────────────────────────────────────────────────────
@@ -369,8 +448,11 @@ export async function start(opts: { question?: string; engine?: EngineId } = {})
   const conversationId = crypto.randomUUID();
   sessionStart = performance.now();
   localSeq = 0;
-  firstQuery = true;
   attemptsThisTurn = 1;
+  everConnected = false;
+  verifiedTurns.clear();
+  clearTimeout(pendingTimer);
+  pendingTimer = undefined;
   toolCache.clear();
   confirmedFilters = {};
   selectedSiteKeys = [];
@@ -396,6 +478,8 @@ export function stop(): void {
   engine = null;
   pendingQuestion = null;
   pendingEcho = null;
+  clearTimeout(pendingTimer);
+  pendingTimer = undefined;
   void previous?.disconnect("user_stop");
   store.endSession();
 }
@@ -412,8 +496,15 @@ export function sendText(text: string): void {
     void start({ question: clean });
     return;
   }
-  if (!engine) return; // an engine switch is in flight
   preferDirectIfAsked(clean); // before sending, so it already shapes this answer
+  const status = store.getState().status;
+  if (!engine || status === "connecting" || status === "renewing") {
+    // Still connecting (or switching): keep it, show it, and send it as soon as the engine can take it.
+    pendingQuestion = clean;
+    pendingEcho = { id: crypto.randomUUID(), text: clean, shown: false };
+    showEcho();
+    return;
+  }
   engine.sendText(clean);
 }
 
@@ -500,8 +591,15 @@ export function setVoiceMode(mode: VoiceMode): void {
   if (s.running) store.pushNotice("info", "El cambio de voz aplica al iniciar la próxima sesión.", now());
 }
 
+/** Explicit voice consent (R-26): opens the microphone when given, closes it when withdrawn. */
 export function setVoiceAnalysis(on: boolean): void {
   store.setVoiceAnalysis(on);
+  void engine?.setMicEnabled?.(on);
+}
+
+/** Leaving the console ends the conversation: socket, microphone, player and timers (docs/08 §10). */
+export function leave(): void {
+  if (store.getState().running || engine) stop();
 }
 
 /** «Reconsultar»: repeats the call live and checks that the result matches (A-24). */
@@ -519,6 +617,9 @@ export async function requery(toolCallId: string): Promise<void> {
   const matches = env.status === "ok" && before !== undefined && JSON.stringify(env.data) === JSON.stringify(before.data);
   store.setRequery(toolCallId, { pending: false, matches, ms: env.trace.ms, at: Date.now() });
 }
+
+// Tool catalogue and model ids for the admin board (GET /health).
+void fetchHealth().then((h) => store.setHealth(h.tools, h.models));
 
 // Ask the backend which voices it offers, so the UI only shows what exists (docs/08 §3).
 void fetchVoiceModes().then((modes) => {

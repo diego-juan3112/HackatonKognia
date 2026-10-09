@@ -32,6 +32,8 @@ const FINALIZE_MS = 300;
 export class GeminiLiveEngine extends RealtimeEngineBase {
   readonly id = "gemini" as const;
   protected readonly inputRate = 16_000 as const;
+  /** The server cuts by itself (low start-of-speech sensitivity on the backend): no local wait. */
+  protected readonly bargeConfirmMs = 0;
 
   private ws: WebSocket | null = null;
   private ready = false;
@@ -123,6 +125,10 @@ export class GeminiLiveEngine extends RealtimeEngineBase {
 
   protected sendUserText(text: string): void {
     this.send({ realtimeInput: { text } });
+  }
+
+  protected sendNote(text: string): void {
+    this.send({ clientContent: { turns: [{ role: "user", parts: [{ text }] }], turnComplete: true } });
   }
 
   protected sendGreeting(spokenBrief: string): void {

@@ -33,6 +33,21 @@ const questions = brief.suggested_questions.slice(0, 4);
     <ol class="msgs" id="msgs" aria-live="off"></ol>
   </div>
 
+  <div class="consent" id="voice-consent" data-testid="voice-consent" data-on="false">
+    <p class="consent-off">
+      <button type="button" class="consent-btn" id="btn-consent" data-testid="consent-button">
+        <Mic aria-hidden="true" /> Usar mi voz
+      </button>
+      <span>Permite el micrófono y el análisis de voz: solo para ajustar el tono, sin guardar audio.</span>
+    </p>
+    <p class="consent-on">
+      <span class="dot" aria-hidden="true"></span>
+      <span data-testid="voice-active">Análisis de voz activo</span>
+      <button type="button" class="consent-off-btn" id="btn-consent-off" data-testid="consent-withdraw">Dejar de usar mi voz</button>
+    </p>
+    <p class="ai-badge" data-testid="ai-badge">Asistente de IA: puede equivocarse; las cifras salen de datos.gov.co.</p>
+  </div>
+
   <form class="composer" id="ask-form">
     <button class="mic" type="button" id="btn-mic" data-testid="mic-button-composer" data-running="false" aria-label="Hablar" title="Hablar">
       <span class="when-stopped"><Mic aria-hidden="true" /></span>
@@ -47,16 +62,19 @@ const questions = brief.suggested_questions.slice(0, 4);
 <script>
   import { bind, byId, esc, icon, panel, reconcile, type KeyedItem } from "../scripts/dom";
   import { citeLine } from "../scripts/evidence";
+  import { setAnalysisWanted } from "../scripts/analysis";
+  import { markFigures } from "../scripts/figures";
   import * as controller from "../voice/controller";
   import { getState, type ConsoleState, type Notice, type Utterance } from "../voice/store";
 
   /** Agent text split into what was heard and what was generated but never played. */
   function agentText(u: Utterance): string {
-    if (u.delivered_text === undefined) return esc(u.text);
+    const mark = (t: string): string => markFigures(esc(t), u.unverified);
+    if (u.delivered_text === undefined) return mark(u.text);
     const heard = u.delivered_text;
     const rest = u.text.startsWith(heard) ? u.text.slice(heard.length) : "";
-    if (!rest.trim()) return esc(heard);
-    return `${esc(heard)}<span class="unheard" title="No llegó a oírse">${esc(rest)}</span>`;
+    if (!rest.trim()) return mark(heard);
+    return `${mark(heard)}<span class="unheard" title="No llegó a oírse">${esc(rest)}</span>`;
   }
 
   function userText(u: Utterance): string {
@@ -67,7 +85,10 @@ const questions = brief.suggested_questions.slice(0, 4);
   function bubble(u: Utterance, cite: string): KeyedItem {
     const typing = u.final ? "" : `<p class="typing"><span class="sr-only">${u.role === "agent" ? "Respondiendo" : "Escuchando"}</span><i></i><i></i><i></i></p>`;
     const who = u.role === "agent" ? "Asistente" : "Tú";
-    const note = u.delivered_text !== undefined ? '<p class="msg-note">Interrumpido</p>' : "";
+    const notes: string[] = [];
+    if (u.delivered_text !== undefined) notes.push("Interrumpido");
+    if (u.unverified?.length) notes.push("Cifra no verificada: el asistente la corrige");
+    const note = notes.map((n) => `<p class="msg-note" data-testid="msg-note">${esc(n)}</p>`).join("");
     return {
       key: u.id,
       cls: `msg from-${u.role}${u.final ? "" : " partial"}${u.kind === "ack" ? " is-ack" : ""}`,
@@ -81,7 +102,7 @@ const questions = brief.suggested_questions.slice(0, 4);
       key: `n-${n.id}`,
       cls: "msg system",
       testid: "chat-error",
-      html: `<p>${icon("triangle-alert")}<span>${esc(n.text)}</span></p>`,
+      html: `<p>${icon("triangle-alert")}<span>${esc(n.text)}</span>${n.retry ? '<button type="button" class="retry-btn" data-retry data-testid="retry-button">Reintentar</button>' : ""}</p>`,
     };
   }
 
@@ -126,7 +147,22 @@ const questions = brief.suggested_questions.slice(0, 4);
       if (jumpToEnd && s.utterances.some((u) => u.role === "agent" && !u.final)) jumpToEnd = false;
     };
 
+    const consent = byId("voice-consent");
+    const renderConsent = (s: ConsoleState): void => {
+      if (consent) consent.dataset.on = String(s.voiceAnalysis);
+    };
+    byId("btn-consent")?.addEventListener("click", () => {
+      // The explicit gesture of R-26: opens the microphone (and starts the session if needed).
+      setAnalysisWanted(true);
+      if (!getState().running) void controller.start();
+    });
+    byId("btn-consent-off")?.addEventListener("click", () => setAnalysisWanted(false));
+    msgs?.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("button[data-retry]")) controller.retry();
+    });
+
     const renderControls = (s: ConsoleState): void => {
+      renderConsent(s);
       if (!mic) return;
       mic.dataset.running = String(s.running);
       const label = s.running ? "Detener" : "Hablar";
@@ -363,13 +399,84 @@ const questions = brief.suggested_questions.slice(0, 4);
 
   /* ── Composer ──────────────────────────────────────────────────────────── */
 
+  .consent {
+    display: grid;
+    gap: 2px;
+    padding: var(--s-2) clamp(var(--s-3), 2.5vw, var(--s-4)) 0;
+    border-top: 1px solid var(--border);
+    background: var(--card);
+    font-size: var(--t-xs);
+    color: var(--ink-2);
+  }
+
+  .consent p {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    line-height: 1.35;
+  }
+
+  .consent[data-on="true"] .consent-off,
+  .consent[data-on="false"] .consent-on {
+    display: none;
+  }
+
+  .consent-btn,
+  .consent-off-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    min-height: 2.25rem;
+    padding: 0.25rem var(--s-3);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--primary-ink);
+    font-size: var(--t-sm);
+    font-weight: 650;
+  }
+
+  .consent-off-btn {
+    border-color: var(--border-strong);
+    background: transparent;
+    font-weight: 600;
+  }
+
+  .consent .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .consent .ai-badge {
+    color: var(--ink-3);
+  }
+
+  .retry-btn {
+    margin-left: auto;
+    padding: 0.15rem var(--s-3);
+    border: 1px solid currentColor;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: inherit;
+    font-weight: 650;
+  }
+
+  .bubble mark.unverified {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+
   .composer {
     display: flex;
     align-items: center;
     gap: var(--s-2);
     padding: var(--s-3) clamp(var(--s-3), 2.5vw, var(--s-4));
     padding-bottom: max(var(--s-3), env(safe-area-inset-bottom));
-    border-top: 1px solid var(--border);
     background: var(--card);
   }
 

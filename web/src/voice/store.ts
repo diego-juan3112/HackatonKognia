@@ -40,6 +40,8 @@ export interface Utterance {
   kind?: SpeechKind;
   /** Set when the agent was interrupted: only this part was actually heard. */
   delivered_text?: string;
+  /** Figures the backend could not find in the tool results of the turn (POST /verify/answer). */
+  unverified?: number[];
   /** Set when a later utterance corrected this one; the original text is kept. */
   correction?: { text: string; reason: string; t: number };
 }
@@ -95,6 +97,8 @@ export interface Notice {
   t: number;
   kind: "session" | "error" | "info";
   text: string;
+  /** Shows «Reintentar»: the session could not start. */
+  retry?: boolean;
 }
 
 export interface ConsoleState {
@@ -120,6 +124,10 @@ export interface ConsoleState {
   /** Voices the backend offers (`GET /health` → `voice_modes`, docs/08 §3). */
   voiceModes: VoiceMode[];
   speakingKind: SpeechKind | null;
+  /** Tool catalogue announced by `GET /health` (docs/08 §3). */
+  toolCatalog: { name: string; description: string }[];
+  /** Model ids announced by the backend, per engine. */
+  engineModels: Partial<Record<string, string>>;
 }
 
 export type Slice = "status" | "transcript" | "tools" | "affect" | "style" | "latency" | "notices" | "meta" | "reset";
@@ -151,11 +159,13 @@ function initialState(): ConsoleState {
     turns: [],
     notices: [],
     lastError: null,
-    // On by default (team decision); the switch turns it off. Audio is never stored (R-26).
-    voiceAnalysis: true,
+    // Off until the person presses «Usar mi voz» (R-26). Audio is never stored.
+    voiceAnalysis: false,
     voiceMode: "engine",
     voiceModes: ["engine"],
     speakingKind: null,
+    toolCatalog: [],
+    engineModels: {},
   };
 }
 
@@ -396,7 +406,7 @@ export function dispatch(ev: AnyEngineEvent): void {
 // ── Mutations that do not come from the engine ───────────────────────────────
 
 export function beginSession(conversation_id: string, engine: EngineId, model: string, simulated: boolean): void {
-  const keep = { voiceAnalysis: state.voiceAnalysis, voiceMode: state.voiceMode, voiceModes: state.voiceModes };
+  const keep = { voiceAnalysis: state.voiceAnalysis, voiceMode: state.voiceMode, voiceModes: state.voiceModes, toolCatalog: state.toolCatalog, engineModels: state.engineModels };
   seenEvents.clear();
   state = { ...initialState(), ...keep, running: true, conversation_id, engine, model, simulated };
   notify("reset");
@@ -419,14 +429,15 @@ export function endSession(): void {
 
 export function reset(): void {
   // Engine and voice choices are settings, not conversation state.
-  const keep = { engine: state.engine, model: state.model, simulated: state.simulated, voiceMode: state.voiceMode, voiceModes: state.voiceModes };
+  const keep = { engine: state.engine, model: state.model, simulated: state.simulated, voiceMode: state.voiceMode, voiceModes: state.voiceModes, toolCatalog: state.toolCatalog, engineModels: state.engineModels };
   state = { ...initialState(), ...keep };
   notify("reset");
 }
 
 export function setEngine(engine: EngineId, model: string, simulated: boolean): void {
   state.engine = engine;
-  state.model = model;
+  // The backend's model id wins over the one fixed in the client (GET /health).
+  state.model = (!simulated && state.engineModels[engine]) || model;
   state.simulated = simulated;
   notify("meta");
 }
@@ -441,6 +452,14 @@ export function setVoiceAnalysis(on: boolean): void {
   notify("meta", "affect");
 }
 
+export function setHealth(tools: ConsoleState["toolCatalog"], models: ConsoleState["engineModels"]): void {
+  state.toolCatalog = tools;
+  state.engineModels = models;
+  const m = models[state.engine];
+  if (m && state.model !== m && !state.simulated) state.model = m;
+  notify("meta", "tools");
+}
+
 export function setVoiceMode(mode: VoiceMode): void {
   state.voiceMode = mode;
   notify("meta");
@@ -451,6 +470,14 @@ export function setVoiceModes(modes: VoiceMode[]): void {
   state.voiceModes = modes.includes("engine") ? modes : ["engine", ...modes];
   if (!state.voiceModes.includes(state.voiceMode)) state.voiceMode = "engine";
   notify("meta");
+}
+
+/** Marks figures of an agent utterance as not verified against the evidence. */
+export function markUnverified(utterance_id: string, numbers: number[]): void {
+  const u = state.utterances.find((x) => x.id === utterance_id);
+  if (!u || numbers.length === 0) return;
+  u.unverified = numbers;
+  notify("transcript");
 }
 
 export function putEvidence(env: EvidenceEnvelope): void {
@@ -487,8 +514,15 @@ export function invalidateTurn(turn_id: string | null): void {
   notify("tools");
 }
 
-export function pushNotice(kind: Notice["kind"], text: string, t = 0): void {
+export function pushNotice(kind: Notice["kind"], text: string, t = 0, retry = false): void {
   addNotice(kind, text, t);
+  if (retry) state.notices[state.notices.length - 1]!.retry = true;
+  notify("notices");
+}
+
+/** Drops the error notices of the current conversation (before one human-readable notice replaces them). */
+export function clearErrors(): void {
+  state.notices = state.notices.filter((n) => n.kind !== "error");
   notify("notices");
 }
 

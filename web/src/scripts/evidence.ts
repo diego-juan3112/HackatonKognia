@@ -10,7 +10,7 @@ import type { CacheStatus, EvidenceEnvelope, ToolStatus, WarningCode } from "../
 import { dur, esc, icon, num } from "./dom";
 
 const CACHE: Record<CacheStatus, { cls: string; label: string; title: string }> = {
-  live: { cls: "tag-live", label: "live", title: "Consulta recién hecha a la fuente" },
+  live: { cls: "tag-live", label: "en vivo", title: "Consulta recién hecha a la fuente" },
   fresh: { cls: "tag-fresh", label: "fresh", title: "Respuesta en caché de menos de 60 segundos" },
   stale: { cls: "tag-stale", label: "stale", title: "La fuente falló: se sirve una respuesta anterior" },
 };
@@ -128,7 +128,7 @@ export function evidenceBody(t: ToolEntry, s: ConsoleState): string {
     </p>
     ${error}
     ${result(env)}
-    ${env && env.status === "ok" ? `<p class="src">Fuente: datos.gov.co, conjunto ${esc(env.evidence.dataset_id)} (MinSalud, REPS). Corte: ${esc(cutoff)}. Consultado a las ${fetched}.</p>` : ""}
+    ${env && env.status === "ok" ? `<p class="src">Fuente: datos.gov.co, conjunto ${esc(env.evidence.dataset_id)} (MinSalud, REPS). Corte: ${esc(cutoff)}. Consultado a las ${fetched.replace(/\.\s*$/, "")}.</p>` : ""}
     ${warnings ? `<ul class="warnings">${warnings}</ul>` : ""}
     ${requeryLine(t)}
     ${canRequery ? `<button class="btn requery-btn" type="button" data-testid="requery-button" data-requery="${esc(t.tool_call_id)}" ${t.requery?.pending ? 'aria-disabled="true"' : ""}>${icon("refresh-cw")} Reconsultar</button>` : ""}`;

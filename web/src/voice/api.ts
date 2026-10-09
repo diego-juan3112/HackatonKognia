@@ -31,24 +31,33 @@ export interface ToolContext {
 }
 
 export interface RunToolOptions {
-  /** "Reconsultar" and the first query of a session always go live (docs/09 §6). */
+  /** Only "Reconsultar" forces a live query (docs/09 §6). */
   forceLive?: boolean;
 }
 
 let sessionToken: string | null = null;
+/** One request in flight: concurrent callers share it instead of minting a token each. */
+let sessionPromise: Promise<string | null> | null = null;
 
 async function ensureSession(): Promise<string | null> {
   if (USING_MOCKS) return null;
   if (sessionToken) return sessionToken;
-  const res = await fetch(`${API_URL}/sessions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ locale: "es-CO" }),
-  });
-  if (!res.ok) throw new Error(`POST /sessions → ${res.status}`);
-  const body = (await res.json()) as { token: string };
-  sessionToken = body.token;
-  return sessionToken;
+  sessionPromise ??= (async () => {
+    try {
+      const res = await fetch(`${API_URL}/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locale: "es-CO" }),
+      });
+      if (!res.ok) throw new Error(`POST /sessions → ${res.status}`);
+      const body = (await res.json()) as { token: string };
+      sessionToken = body.token;
+      return sessionToken;
+    } finally {
+      sessionPromise = null;
+    }
+  })();
+  return sessionPromise;
 }
 
 /** Authenticated call to the backend: adds `X-Session-Token` and a deadline. */
@@ -63,6 +72,51 @@ export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs =
 }
 
 // ── Health (docs/08 §3) ──────────────────────────────────────────────────────
+
+export interface HealthInfo {
+  modes: VoiceMode[];
+  defaultMode: VoiceMode;
+  /** Engines that can speak with the cloned voice (text-only output). */
+  clonedEngines: string[];
+  tools: { name: string; description: string }[];
+  models: Partial<Record<string, string>>;
+}
+
+let healthPromise: Promise<HealthInfo> | null = null;
+
+/** `GET /health`, once per page. On any failure only the engine voice is offered. */
+export function fetchHealth(): Promise<HealthInfo> {
+  healthPromise ??= (async (): Promise<HealthInfo> => {
+    const fallback: HealthInfo = { modes: ["engine"], defaultMode: "engine", clonedEngines: [], tools: [], models: {} };
+    if (USING_MOCKS) return { ...fallback, modes: ["engine", "cloned"], clonedEngines: ["openai"] };
+    try {
+      const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) return fallback;
+      const body = (await res.json()) as Record<string, unknown>;
+      const raw = Array.isArray(body.voice_modes) ? body.voice_modes : [];
+      const modes = raw.filter((m): m is VoiceMode => m === "engine" || m === "cloned");
+      const all: VoiceMode[] = modes.includes("engine") ? modes : ["engine", ...modes];
+      const engines = (body.engines && typeof body.engines === "object" ? body.engines : {}) as Record<string, { model?: unknown }>;
+      const models: Partial<Record<string, string>> = {};
+      for (const [k, v] of Object.entries(engines)) if (typeof v?.model === "string") models[k] = v.model;
+      return {
+        modes: all,
+        defaultMode: body.default_voice_mode === "cloned" && all.includes("cloned") ? "cloned" : "engine",
+        clonedEngines: Array.isArray(body.cloned_voice_engines) ? body.cloned_voice_engines.filter((x): x is string => typeof x === "string") : [],
+        tools: Array.isArray(body.tools)
+          ? body.tools
+              .map((t) => t as { name?: unknown; description?: unknown })
+              .filter((t) => typeof t.name === "string")
+              .map((t) => ({ name: String(t.name), description: typeof t.description === "string" ? t.description : "" }))
+          : [],
+        models,
+      };
+    } catch {
+      return fallback;
+    }
+  })();
+  return healthPromise;
+}
 
 let defaultVoice: VoiceMode = "engine";
 let clonedEngines: string[] | null = null;
@@ -156,6 +210,33 @@ export async function fetchBrief(): Promise<{ brief: DatasetBrief; live: boolean
   } catch {
     // The cover page still needs something to draw; it is labelled as a recorded sample.
     return { brief: MOCK_BRIEF, live: false };
+  }
+}
+
+// ── Figure check (docs/10 §5) ────────────────────────────────────────────────
+
+export interface VerifyResult {
+  turn_id: string;
+  grounded: boolean;
+  unsupported: number[];
+  correction: string | null;
+}
+
+/** `POST /verify/answer`: checks the figures of an answer against its tool results. Null on any failure. */
+export async function verifyAnswer(body: { turn_id: string; text: string; tool_results: EvidenceEnvelope[] }): Promise<VerifyResult | null> {
+  if (USING_MOCKS) return null;
+  try {
+    const res = await apiFetch("/verify/answer", { method: "POST", body: JSON.stringify({ ...body, tool_results: body.tool_results.slice(-10) }) }, 4000);
+    if (!res.ok) return null;
+    const parsed = (await res.json()) as Partial<VerifyResult>;
+    return {
+      turn_id: String(parsed.turn_id ?? body.turn_id),
+      grounded: parsed.grounded !== false,
+      unsupported: Array.isArray(parsed.unsupported) ? parsed.unsupported.filter((n): n is number => typeof n === "number") : [],
+      correction: typeof parsed.correction === "string" ? parsed.correction : null,
+    };
+  } catch {
+    return null;
   }
 }
 
