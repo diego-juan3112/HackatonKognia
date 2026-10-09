@@ -52,7 +52,7 @@ Una misma consulta lógica se renderiza a ambos formatos.
 | Política del cliente (`httpx.AsyncClient`, `integrations/datasets/socrata_client.py` *(planeado)*) | Valor |
 |---|---|
 | Conexión | Persistente (keep-alive), calentada al pedir el brief |
-| Tiempos | Conexión 2 s · lectura 4 s por intento |
+| Tiempos | Conexión **4 s** · lectura 4 s por intento, siempre dentro del plazo común de 6 s. *G3 midió 0,8–2,7 s en la primera conexión: con 2 s fallaba* ([00](00-contexto-y-decisiones.md) §6) |
 | Reintentos | **1** ante timeout, 5xx o error de conexión (R-25); 429: se respeta `Retry-After` solo si cabe en el plazo, si no `unavailable` |
 | Token | `DATOS_GOV_APP_TOKEN`, leído **solo** en `src/config.py` (R-05). Se valida al arrancar: si responde 403 se descarta y se sigue anónimo; **nunca** se envía un token inválido ni se registra |
 | Anonimato | El acceso anónimo funcionó hoy, pero la documentación exige token o usuario: **no es una garantía**; se usa el token siempre que exista |
@@ -69,7 +69,7 @@ De ahí el calentamiento, el plazo de 4 s y el reconocimiento hablado previo a c
 |---|---|
 | Una **fila** | Una categoría de capacidad de una sede; en ambulancias y unidades móviles, **1 fila = 1 unidad** (cantidad 1) |
 | Un **prestador (IPS)** | `count(DISTINCT c_digo_prestador)` con los filtros elegidos |
-| Una **sede** | `count(DISTINCT c_digo_sede)`; son *códigos de sede*, **no validados como sedes físicas** |
+| Una **sede** | `count(DISTINCT c_digo_sede)`; son *códigos de sede*, **no validados como sedes físicas**. **Trampa medida en G3:** `c_digo_sede` se repite entre sedes de un mismo prestador (las 6 sedes de la ESE Bello Salud comparten `c_digo_sede = c_digo_prestador` y solo cambia `n_mero_sede`), así que 10.921 **subcuenta** las sedes listables. `site_count` se rotula «códigos de sede» con `SITE_CODES_NOT_PHYSICAL_SITES`, y una sede concreta siempre se identifica con `site_key` (tres campos) |
 | **Capacidad** | `sum(num_cantidad_capacidad_instalada)` de **un grupo** (`capacity_group`) y, si se pide, un tipo; nunca se suman grupos distintos (camas + salas + ambulancias) |
 | **Nivel** | Vacío en 8.325 de 9.320 IPS: «sin nivel registrado» ≠ nivel 0 ni «sin nivel» inferido |
 | Totales nacionales | Salen de agregados de la fuente, nunca de la primera página ni de un top-k |
@@ -194,7 +194,7 @@ candidatos; nunca es fuente de cifras** (R-22).
 
 ## 8. Brief en vivo (`GET /dataset/brief`)
 
-Se pide al conectar y sirve de calentamiento. Tres consultas **en paralelo**: (1) `count(*)`, prestadores y códigos de sede en una sola consulta; (2) prestadores por naturaleza; (3) top departamentos por prestadores.
+Se pide al conectar y sirve de calentamiento. Tres consultas: (1) `count(*)`, prestadores y códigos de sede en una sola consulta, **primero, para calentar la conexión**; luego (2) prestadores por naturaleza y (3) top departamentos por prestadores **en paralelo** (G3: lanzar las tres a la vez abre tres conexiones en frío y tarda más).
 
 ```json
 {
@@ -227,7 +227,7 @@ de la fuente; si el corte cambia, se vuelven a medir.
 | Filas (categorías de capacidad) | 41.427 |
 | Prestadores (IPS) distintos | **9.320** — Privada 8.308 · Pública 998 · Mixta 14 |
 | Códigos de sede distintos | **10.921** — Privada 9.632 · Pública 1.274 · Mixta 15 |
-| Municipios · valores de `departamento` | 1.027 · 38 |
+| Municipios · valores de `departamento` | 1.027 nombres (1.113 pares municipio–departamento; 67 nombres homónimos) · 38 |
 | Filas por naturaleza | Privada 25.067 · Pública 16.174 · Mixta 186 |
 | IPS por nivel registrado | sin nivel **8.325** · 1 → 853 · 2 → 113 · 3 → 29 (suman 9.320) · filas sin nivel: 25.266 (61%) |
 | Capacidad por grupo (filas / suma) | CONSULTORIOS 16.053 / 70.881 · SALAS 7.597 / 12.987 · **CAMAS 6.738 / 97.036** · AMBULANCIAS 5.340 / 5.340 · CAMILLAS 4.409 / 21.174 · UNIDAD MOVIL 694 / 694 · SILLAS 596 / 11.646 |
