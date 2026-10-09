@@ -79,8 +79,10 @@ class CompareIpsArgs(_Strict):
 
 
 class CorrectContextArgs(_Strict):
-    target_turn_id: str
-    expected_state_version: int = Field(ge=0)
+    # Optional (eval 2026-10-09): the engine never knows these internal ids and asked the
+    # user for them. When absent they come from the canonical context the browser sends.
+    target_turn_id: str | None = None
+    expected_state_version: int | None = Field(default=None, ge=0)
     field: Literal["department", "municipality", "name", "nature", "level", "site_key"]
     value: str = Field(min_length=1, max_length=200)
 

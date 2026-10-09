@@ -69,6 +69,17 @@ async def test_stale_cache_only_when_the_source_fails():
     assert res.cache_status == "stale" and res.rows == [{"value": "9"}]
 
 
+async def test_intermittent_4xx_is_retried_once():  # eval 2026-10-09: SOURCE_REJECTED that recovered
+    n = {"calls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        n["calls"] += 1
+        return httpx.Response(400) if n["calls"] == 1 else httpx.Response(200, json=[{"value": "7"}])
+
+    res = await _client(handler).query("SELECT 1", deadline=Deadline(5))
+    assert res.rows == [{"value": "7"}] and n["calls"] == 2
+
+
 async def test_429_without_room_in_deadline_is_rate_limited():
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(429, headers={"Retry-After": "30"})
@@ -76,6 +87,34 @@ async def test_429_without_room_in_deadline_is_rate_limited():
     with pytest.raises(DatasetUnavailable) as exc:
         await _client(handler).query("SELECT 1", deadline=Deadline(5))
     assert exc.value.code == "RATE_LIMITED" and exc.value.retry_after_s == 30
+
+
+async def test_two_attempts_fit_the_six_second_deadline():
+    import asyncio
+    import time
+
+    async def slow(req: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(10)
+        return httpx.Response(200, json=[])
+
+    c = _client(slow, attempt_budgets_s=(0.3, 0.2))
+    t0 = time.monotonic()
+    with pytest.raises(DatasetUnavailable):
+        await c.query("SELECT 1", deadline=Deadline(6))
+    assert time.monotonic() - t0 < 1.0  # 0.3 + 0.2, never 2 x 4 s
+
+
+async def test_warm_skips_when_recently_used():
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, json=[{"rows": "1"}])
+
+    c = _client(handler)
+    await c.warm()
+    await c.warm()
+    assert len(calls) == 1
 
 
 async def test_exhausted_deadline_does_not_call():

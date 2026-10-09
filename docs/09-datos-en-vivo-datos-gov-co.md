@@ -52,8 +52,9 @@ Una misma consulta lógica se renderiza a ambos formatos.
 | Política del cliente (`httpx.AsyncClient`, `integrations/datasets/socrata_client.py` *(planeado)*) | Valor |
 |---|---|
 | Conexión | Persistente (keep-alive), calentada al pedir el brief |
-| Tiempos | Conexión **4 s** · lectura 4 s por intento, siempre dentro del plazo común de 6 s. *G3 midió 0,8–2,7 s en la primera conexión: con 2 s fallaba* ([00](00-contexto-y-decisiones.md) §6) |
+| Tiempos | **Dos intentos de 3,5 s + 2 s** (con margen dentro del plazo común de 6 s; antes decía 4 s por intento más reintento, que no cabía). Conexión hasta 3,5 s en el primer intento: *G3 midió 0,8–2,7 s en la primera conexión* ([00](00-contexto-y-decisiones.md) §6) |
 | Reintentos | **1** ante timeout, 5xx o error de conexión (R-25); 429: se respeta `Retry-After` solo si cabe en el plazo, si no `unavailable` |
+| Calentamiento y precarga | La conexión se calienta en `POST /sessions` y `POST /realtime/session` (consulta barata, fuera del camino crítico). Al pedir el brief y al crear la sesión de voz se precargan, **a través de las propias herramientas** (misma SoQL), los agregados más probables: prestadores total y por naturaleza, códigos de sede por naturaleza, camas totales, top 5 departamentos y top 5 municipios por camas. Si se piden en los 60 s siguientes salen `fresh`, nunca `live`. Una sola `httpx.AsyncClient` por proceso con keep-alive; **sin HTTP/2** (exigiría `h2`, dependencia nueva, R-10) |
 | Token | `DATOS_GOV_APP_TOKEN`, leído **solo** en `src/config.py` (R-05). Se valida al arrancar: si responde 403 se descarta y se sigue anónimo; **nunca** se envía un token inválido ni se registra |
 | Anonimato | El acceso anónimo funcionó hoy, pero la documentación exige token o usuario: **no es una garantía**; se usa el token siempre que exista |
 | Codificación | UTF-8 en todo el camino (`Pública`, `BOGOTÁ`) |

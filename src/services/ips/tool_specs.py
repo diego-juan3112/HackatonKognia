@@ -1,82 +1,69 @@
 """Tool declarations handed to the voice engines when minting a session (docs/08 section 3).
 
 Hand-written, provider-neutral JSON Schema (no ``anyOf``/``$defs``, which
-Gemini function declarations reject). ``tests/services/test_tool_specs.py``
-keeps them in lock-step with the Pydantic models in ``models/ips.py``, which
-are what the backend actually validates (R-23).
+Gemini function declarations reject; string enums only). Kept SHORT on purpose:
+fewer input tokens, faster tool decision (latency task, 2026-10-09). The rules
+live in the instructions; the backend validates everything anyway (R-23).
+``tests/services/test_session_and_specs.py`` keeps them in lock-step with the
+Pydantic models in ``models/ips.py``.
 """
 
 from __future__ import annotations
 
 from models.voice import ToolSpec
 
-_NATURE = {"type": "string", "enum": ["Pública", "Privada", "Mixta"], "description": "Naturaleza jurídica"}
-# No integer enum: Gemini function declarations only accept string enums
-# (smoke 2026-10-09: auth_tokens -> 400 INVALID_ARGUMENT on enum[0] TYPE_STRING).
-_LEVEL = {"type": "integer", "minimum": 1, "maximum": 3,
-          "description": "Nivel de atención registrado (1, 2 o 3). Vacío en el 89% de las IPS: no lo infieras"}
-_DEPT = {"type": "string", "description": "Departamento tal como lo dijo la persona (p. ej. «Antioquia», «Bogotá»)"}
-_MUNI = {"type": "string", "description": "Municipio tal como lo dijo la persona; si hay homónimos, agrega department"}
-_GROUP = {"type": "string", "description": "Grupo de capacidad: CAMAS, SALAS, CAMILLAS, CONSULTORIOS, AMBULANCIAS, "
-                                           "SILLAS o UNIDAD MOVIL"}
-_TYPE = {"type": "string", "description": "Tipo dentro del grupo, p. ej. «Adultos» en CAMAS"}
+_S = {"type": "string"}
+_NATURE = {"type": "string", "enum": ["Pública", "Privada", "Mixta"]}
+_LEVEL = {"type": "integer", "minimum": 1, "maximum": 3}
+_GROUP = {"type": "string", "description": "CAMAS, SALAS, CAMILLAS, CONSULTORIOS, AMBULANCIAS, SILLAS, UNIDAD MOVIL"}
 
 TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="search_ips",
-        description="Busca sedes de IPS por ubicación, nombre, naturaleza o nivel. Devuelve hasta `limit` sedes con "
-                    "su site_key. Si la ubicación es ambigua responde 'ambiguous': pregunta, no elijas.",
+        description="Lista sedes de IPS por ubicación, nombre, naturaleza o nivel.",
         parameters={"type": "object", "properties": {
-            "department": _DEPT, "municipality": _MUNI,
-            "name": {"type": "string", "description": "Nombre del prestador o de la sede, p. ej. «San José»"},
-            "nature": _NATURE, "level": _LEVEL,
-            "limit": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Máximo de sedes (5 por omisión)"},
-            "cursor": {"type": "string", "description": "next_cursor de una búsqueda anterior, para la página siguiente"},
+            "department": _S, "municipality": _S, "name": _S, "nature": _NATURE, "level": _LEVEL,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 20}, "cursor": _S,
         }},
     ),
     ToolSpec(
         name="get_ips_details",
-        description="Detalle de una sede y su capacidad instalada por grupo y tipo. Contacto solo si la persona lo "
-                    "pide explícitamente.",
+        description="Detalle y capacidad instalada de una sede (site_key de search_ips).",
         parameters={"type": "object", "properties": {
-            "site_key": {"type": "string", "description": "site_key devuelto por search_ips"},
-            "capacity_group": _GROUP, "capacity_type": _TYPE,
-            "include_contact": {"type": "boolean", "description": "true solo si la persona pidió dirección o teléfono"},
+            "site_key": _S, "capacity_group": _GROUP, "capacity_type": _S, "include_contact": {"type": "boolean"},
         }, "required": ["site_key"]},
     ),
     ToolSpec(
         name="aggregate_ips",
-        description="Cuenta prestadores (provider_count), códigos de sede (site_count) o suma capacidad instalada "
-                    "(capacity_sum, exige capacity_group). Totales exactos de la fuente, opcionalmente agrupados.",
+        description="Cuenta IPS (provider_count) o códigos de sede (site_count), o suma capacidad (capacity_sum, "
+                    "exige capacity_group). Opcional: agrupar.",
         parameters={"type": "object", "properties": {
             "metric": {"type": "string", "enum": ["provider_count", "site_count", "capacity_sum"]},
             "filters": {"type": "object", "properties": {
-                "department": _DEPT, "municipality": _MUNI,
-                "name": {"type": "string", "description": "Nombre del prestador"},
-                "nature": _NATURE, "level": _LEVEL, "capacity_group": _GROUP, "capacity_type": _TYPE,
+                "department": _S, "municipality": _S, "name": _S, "nature": _NATURE, "level": _LEVEL,
+                "capacity_group": _GROUP, "capacity_type": _S,
             }},
             "group_by": {"type": "string", "enum": ["department", "municipality", "nature", "level"]},
             "order": {"type": "string", "enum": ["desc", "asc"]},
-            "top_n": {"type": "integer", "minimum": 1, "maximum": 10, "description": "Cuántos grupos devolver"},
+            "top_n": {"type": "integer", "minimum": 1, "maximum": 10},
         }, "required": ["metric"]},
     ),
     ToolSpec(
         name="compare_ips",
-        description="Compara la capacidad instalada de 2 o 3 sedes ya resueltas, del mismo grupo y tipo.",
+        description="Compara la capacidad de 2 o 3 sedes del mismo grupo.",
         parameters={"type": "object", "properties": {
-            "site_keys": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 3},
-            "capacity_group": _GROUP, "capacity_type": _TYPE,
+            "site_keys": {"type": "array", "items": _S, "minItems": 2, "maxItems": 3},
+            "capacity_group": _GROUP, "capacity_type": _S,
         }, "required": ["site_keys", "capacity_group"]},
     ),
     ToolSpec(
         name="correct_context",
-        description="Aplica una corrección explícita de la persona («no, dije Melgar»). Después vuelve a consultar "
-                    "con el valor corregido.",
+        description="Aplica una corrección explícita de la persona («no, dije Melgar»); luego vuelve a consultar. "
+                    "Basta field y value; los identificadores son internos: nunca se los pidas a la persona.",
         parameters={"type": "object", "properties": {
-            "target_turn_id": {"type": "string", "description": "Turno que se corrige"},
-            "expected_state_version": {"type": "integer", "description": "state_version vigente del contexto"},
+            "target_turn_id": _S, "expected_state_version": {"type": "integer"},
             "field": {"type": "string", "enum": ["department", "municipality", "name", "nature", "level", "site_key"]},
-            "value": {"type": "string", "description": "Valor corregido tal como lo dijo la persona"},
-        }, "required": ["target_turn_id", "expected_state_version", "field", "value"]},
+            "value": _S,
+        }, "required": ["field", "value"]},
     ),
 ]

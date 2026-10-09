@@ -102,6 +102,32 @@ class IpsToolService:
             "correct_context": self._correct_context,
         }
 
+    # Most likely questions (brief suggestions and the demo script). Prefetching them
+    # through the tools themselves guarantees the SoQL is byte-identical to what the
+    # model will ask, so the 60 s cache hits and the answer is labelled "fresh".
+    LIKELY: tuple[tuple[str, dict[str, Any]], ...] = (
+        ("aggregate_ips", {"metric": "provider_count"}),
+        ("aggregate_ips", {"metric": "provider_count", "group_by": "nature"}),
+        ("aggregate_ips", {"metric": "site_count", "group_by": "nature"}),
+        ("aggregate_ips", {"metric": "capacity_sum", "filters": {"capacity_group": "CAMAS"}}),
+        ("aggregate_ips", {"metric": "provider_count", "group_by": "department", "top_n": 5}),
+        ("aggregate_ips", {"metric": "capacity_sum", "group_by": "municipality", "top_n": 5,
+                           "filters": {"capacity_group": "CAMAS"}}),
+    )
+
+    async def prefetch(self) -> int:
+        """Warm the dataset cache with the likely aggregates, in parallel. Never raises."""
+        async def one(name: str, args: dict[str, Any]) -> bool:
+            try:
+                parsed = TOOL_ARGS[name].model_validate(args)
+                req = ToolRequest(tool_call_id=f"prefetch:{name}", args=args)
+                env = await self._handlers[name](req, parsed, Deadline(self._deadline_s))
+                return env.status == "ok"
+            except Exception:  # noqa: BLE001 -- best effort, off the critical path
+                return False
+        results = await asyncio.gather(*(one(n, a) for n, a in self.LIKELY))
+        return sum(results)
+
     # -- entry point ---------------------------------------------------------
 
     async def run(self, name: str, req: ToolRequest) -> ToolEnvelope:
@@ -419,7 +445,9 @@ class IpsToolService:
 
     async def _correct_context(self, req: ToolRequest, a: CorrectContextArgs, deadline: Deadline) -> ToolEnvelope:
         current = req.context.state_version
-        if a.expected_state_version != current:
+        expected = current if a.expected_state_version is None else a.expected_state_version
+        target_turn = a.target_turn_id or req.context.turn_id or req.turn_id
+        if expected != current:
             raise _Reject("invalid", error=ToolError(
                 code="STATE_CONFLICT", message="El estado cambió; refresca el contexto.",
                 hint=f"state_version vigente: {current}", retryable=True))
@@ -461,7 +489,7 @@ class IpsToolService:
             "selected_site_keys": [] if a.field != "site_key" else [a.value],
             "last_result_site_keys": [],
             "invalidate_evidence": True,
-            "corrects_turn_id": a.target_turn_id,
+            "corrects_turn_id": target_turn,
         }
         resolved = ", ".join(str(v) for v in confirmed.values() if v)
         return self._envelope(req, "ok", data={"field": a.field, "value": a.value, "resolved": resolved,

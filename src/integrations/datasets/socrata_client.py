@@ -47,8 +47,12 @@ class SocrataClient:
         cache_fresh_s: float = 60.0,
         cache_stale_s: float = 24 * 3600.0,
         page_size: int = 1000,
+        attempt_budgets_s: tuple[float, float] = (3.5, 2.0),
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        # Two attempts that fit the 6 s foreground deadline: 3.5 s + 2 s (+ margin).
+        self._budgets = attempt_budgets_s
+        self._last_ok = 0.0
         self._base_url = base_url.rstrip("/")
         self._path = f"/api/v3/views/{dataset_id}/query.json"
         self._token = app_token or None
@@ -78,6 +82,15 @@ class SocrataClient:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+
+    async def warm(self) -> None:
+        """Keep the TLS connection warm (a new one costs ~0.3 s, a cold first one up to 2.7 s)."""
+        if time.monotonic() - self._last_ok < 15:
+            return
+        try:
+            await self._fetch("SELECT count(*) AS rows", Deadline(3.0))
+        except DatasetUnavailable:
+            log.info("dataset warm-up failed; the next query pays the connection")
 
     async def validate_token(self, deadline: Deadline) -> bool:
         """Check the token once at startup; a 403 drops it (never send an invalid one)."""
@@ -113,19 +126,20 @@ class SocrataClient:
             remaining = deadline.remaining()
             if remaining <= 0.05:
                 raise DatasetUnavailable("TIMEOUT", "Foreground deadline exhausted")
+            budget = min(self._budgets[min(attempts, len(self._budgets) - 1)], remaining)
             attempts += 1
             headers = {"X-App-Token": self._token} if self._token else {}
             timeout = httpx.Timeout(
-                connect=min(self._connect_s, remaining),
-                read=min(self._read_s, remaining),
-                write=min(self._read_s, remaining),
-                pool=min(1.0, remaining),
+                connect=min(self._connect_s, budget),
+                read=min(self._read_s, budget),
+                write=min(self._read_s, budget),
+                pool=min(1.0, budget),
             )
             t0 = time.perf_counter()
             try:
                 r = await asyncio.wait_for(
                     self._http().post(self._path, json=body, headers=headers, timeout=timeout),
-                    timeout=remaining,
+                    timeout=budget,
                 )
             except (TimeoutError, *_RETRYABLE) as exc:
                 last_error = type(exc).__name__
@@ -134,6 +148,7 @@ class SocrataClient:
 
             if r.status_code == 200:
                 data = r.json()
+                self._last_ok = time.monotonic()
                 return (data if isinstance(data, list) else []), ms
             if r.status_code == 403 and self._token and not token_dropped:
                 log.warning("datos.gov.co rejected the app token; continuing anonymously")
@@ -146,11 +161,12 @@ class SocrataClient:
                     await asyncio.sleep(retry_after)
                     continue
                 raise DatasetUnavailable("RATE_LIMITED", "datos.gov.co rate limit", retry_after)
-            if r.status_code >= 500:
-                last_error = f"HTTP {r.status_code}"
-                continue
-            # 4xx other than the above: the query itself is wrong -- a bug, not a blip.
-            raise DatasetUnavailable("SOURCE_REJECTED", f"HTTP {r.status_code}: {r.text[:200]}")
+            # Eval 2026-10-09: datos.gov.co returned intermittent 4xx for valid queries that
+            # succeeded on the next attempt, so any other status gets the one retry too.
+            log.warning("datos.gov.co HTTP %s: %s", r.status_code, r.text[:200])
+            last_error = f"HTTP {r.status_code}"
+            if r.status_code < 500 and attempts >= 2:
+                raise DatasetUnavailable("SOURCE_REJECTED", last_error)
         raise DatasetUnavailable("TIMEOUT" if "Timeout" in last_error else "SOURCE_UNAVAILABLE", last_error)
 
 

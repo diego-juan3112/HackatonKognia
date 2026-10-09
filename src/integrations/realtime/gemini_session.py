@@ -31,11 +31,14 @@ class GeminiLiveSession:
     supports_text_only = False
 
     def __init__(self, *, api_key: str, model: str, voice: str, ttl_s: int = 1800,
+                 silence_duration_ms: int | None = None, prefix_padding_ms: int | None = None,
                  transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.model = model
         self._key = api_key
         self._voice = voice
         self._ttl = ttl_s
+        self._silence_ms = silence_duration_ms
+        self._prefix_ms = prefix_padding_ms
         self._transport = transport
 
     @property
@@ -63,6 +66,13 @@ class GeminiLiveSession:
                 "sessionResumption": {}, "contextWindowCompression": {"slidingWindow": {}},
             },
         }
+        if self._silence_ms is not None:
+            # Faster end-of-speech detection (same knob as OpenAI's silence_duration_ms).
+            body["bidiGenerateContentSetup"]["realtimeInputConfig"] = {"automaticActivityDetection": {
+                "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH",
+                "silenceDurationMs": self._silence_ms,
+                "prefixPaddingMs": self._prefix_ms if self._prefix_ms is not None else 300,
+            }}
         try:
             async with httpx.AsyncClient(transport=self._transport, timeout=8.0) as c:
                 r = await c.post("https://generativelanguage.googleapis.com/v1alpha/auth_tokens",

@@ -9,6 +9,7 @@ import time; the container is assembled in the lifespan.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import logging
@@ -71,8 +72,24 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.c = build() if build else build_container(settings)
         app.state.health_cache = None
+        app.state.bg = set()
         yield
+        for task in list(app.state.bg):
+            task.cancel()
         await app.state.c.aclose()
+
+    def background(coro) -> None:
+        """Fire-and-forget warm-up off the critical path (a reference is kept so it is not GC'd)."""
+        task = asyncio.create_task(coro)
+        app.state.bg.add(task)
+        task.add_done_callback(app.state.bg.discard)
+
+    async def warm_dataset(c: VoiceContainer, prefetch: bool) -> None:
+        warm = getattr(c.dataset, "warm", None)
+        if warm is not None:
+            await warm()
+        if prefetch:
+            await c.tools.prefetch()
 
     app = FastAPI(title="Kognia Voice — Reto 01", version=CONTRACT_VERSION, lifespan=lifespan)
     app.add_middleware(
@@ -145,11 +162,13 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
     async def create_session(body: SessionCreateRequest | None = None,
                              c: VoiceContainer = Depends(container)) -> dict[str, str]:
         token, expires_at = c.sessions.issue((body or SessionCreateRequest()).locale)
+        background(warm_dataset(c, prefetch=False))  # the first query should not pay the TLS handshake
         return {"token": token, "expires_at": expires_at}
 
     @app.post("/realtime/session")
     async def realtime_session(body: RealtimeSessionRequest, _: SessionClaims = Depends(session),
                                c: VoiceContainer = Depends(container)) -> dict[str, Any]:
+        background(warm_dataset(c, prefetch=True))  # first question usually follows within seconds
         return (await c.realtime.create(body)).model_dump()
 
     @app.post("/speech/session")
@@ -160,7 +179,9 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
     @app.get("/dataset/brief")
     async def dataset_brief(force_live: bool = False, _: SessionClaims = Depends(session),
                             c: VoiceContainer = Depends(container)) -> dict[str, Any]:
-        return await c.brief.build(bypass_cache=force_live)
+        brief = await c.brief.build(bypass_cache=force_live)
+        background(c.tools.prefetch())
+        return brief
 
     @app.post("/tools/{name}")
     async def run_tool(name: str, body: ToolRequest, _: SessionClaims = Depends(session),
