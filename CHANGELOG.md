@@ -24,6 +24,32 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 - En vivo (G3, 2026-10-09): números dorados de `docs/09` §9 exactos; analista por texto 3/3 en
   esquema; token de Cartesia 200 en ≈ 1 s.
 
+### Added — contra alucinaciones y latencia (2026-10-09, tarde)
+- **Mundo cerrado (R-22):** prompt `reto01-ips-v5` (solo vale lo que devuelve una herramienta; lista
+  de lo que la fuente no contiene), `for_model` determinista y compacto en cada sobre (cifra, unidad,
+  corte, ≤ 3 filas) y verificador de cifras `POST /verify/answer` (sin LLM).
+- **Evaluación de grounding** (`scripts/eval_grounding.py`, `docs/anexos/eval-grounding-2026-10-09.md`):
+  `gpt-realtime-2.1` en vivo, **0 alucinaciones en 20 casos**, 5/5 cifras doradas, 10/10 rechazos
+  fuera de alcance. La corrección «no, dije Melgar» fallaba: `correct_context` pasa a `field` + `value`.
+- **Latencia:** muletilla «Un momento.», herramienta antes del aviso de IA, respuesta en una frase;
+  `VOICE_OPENAI_MODEL` y VAD configurables; conexión caliente y precarga de los agregados probables;
+  dos intentos de 3,5 s + 2 s; 4xx intermitente reintentable. Banco `scripts/bench_models.py`.
+- G1: `requirements.txt` mínimo (63 MB), `vercel.json` (`iad1`), Dockerfile de respaldo; smoke
+  `scripts/smoke_public.py` y sondas `tests/live/`.
+- D-21 (avatar 3D VRM en el MVP) y dependencias del frontend registradas (R-10).
+
+### Changed
+- **R-26:** análisis de voz activo por defecto, con indicador visible e interruptor; se mantiene el
+  aviso de IA mínimo (RETO-P1/P3, A-25). Riesgo de Ley 1581 registrado en `docs/10` §6.
+- `docs/09` §6: la primera consulta de la sesión puede salir de la precarga `fresh`; solo
+  «Reconsultar» fuerza en vivo.
+
+### Verificado
+- Smoke local 20/20 P0; 136 pruebas offline; 8 sondas en vivo; escaneo de secretos del historial
+  (56 commits, todas las ramas): sin coincidencias.
+- Banco, línea base (prompt v2): primer audio útil con consulta p50 9,0 s (OpenAI) / 13,4 s (Gemini),
+  dominado por un aviso de IA de 11–24 s antes de la herramienta. El «después» se anota en `docs/00` §6.
+
 ### Pendiente
 - **A-21 sin verificar:** con voz sintética el modelo no distinguió tono tenso de calmado; falta
   una grabación humana real. Feedback a LangSmith (hoy: registro estructurado). Despliegue en
