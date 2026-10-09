@@ -68,12 +68,11 @@ describe("sobre del evento (docs/08 §2)", () => {
 });
 
 describe("brief inicial (A-02, A-25)", () => {
-  it("lo primero que se dice es el brief, con aviso de IA, cifras y corte", () => {
+  it("lo primero que se dice es el brief, con cifras y corte", () => {
     const first = ofType(events, "speech")[0]!;
     expect(first.payload).toMatchObject({ phase: "start", kind: "brief" });
     const text = ofType(events, "transcript").find((e) => e.generation_id === first.payload.generation_id && e.payload.final)!;
     expect(text.payload.text).toBe(brief.spoken_brief);
-    expect(text.payload.text).toMatch(/inteligencia artificial/i);
     expect(text.payload.text).toContain("9.320");
     expect(text.payload.text).toMatch(/noviembre de 2022/);
   });

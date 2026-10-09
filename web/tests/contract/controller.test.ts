@@ -136,7 +136,17 @@ describe("guion completo con corte del motor (A-23)", () => {
     await vi.advanceTimersByTimeAsync(3_000);
     const s = store.getState();
     expect(s.affect.length).toBe(s.turns.length);
-    expect(s.affect.every((a) => a.estimate.method === "text" && a.estimate.confidence === null)).toBe(true);
+    // Voice analysis is ON by default: a turn is labelled "text", or "voice"/"fused" when the clip was used.
+    expect(s.affect.every((a) => ["text", "voice", "fused"].includes(a.estimate.method) && a.estimate.confidence === null)).toBe(true);
+    // Turned off, every reading falls back to the text channel.
+    controller.restart();
+    store.setVoiceAnalysis(false);
+    await playScript();
+    await vi.advanceTimersByTimeAsync(3_000);
+    const off = store.getState();
+    expect(off.affect.length).toBe(off.turns.length);
+    expect(off.affect.every((a) => a.estimate.method === "text")).toBe(true);
+    store.setVoiceAnalysis(true);
   });
 });
 

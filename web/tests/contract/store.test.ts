@@ -79,7 +79,10 @@ describe("sesión", () => {
     expect(store.getState().state_version).toBe(3);
   });
 
-  it("Reiniciar borra conversación, consultas, afecto, avisos y el consentimiento de voz (A-25)", () => {
+  it("Reiniciar borra conversación, consultas, afecto y avisos, y retira el consentimiento de voz (R-26, A-25)", () => {
+    // R-26 vigente (2026-10-09, tarde): la voz solo se usa tras el botón «Usar mi voz»;
+    // por defecto está apagada y `reset` retira el consentimiento.
+    expect(store.getState().voiceAnalysis).toBe(false);
     store.setVoiceAnalysis(true);
     store.dispatch(ev("transcript", user("hola", true)));
     store.dispatch(ev("tool_call", { tool_call_id: "c1", name: "aggregate_ips", args: {} }));

@@ -36,28 +36,26 @@ export interface RunToolOptions {
 }
 
 let sessionToken: string | null = null;
-/** One request in flight: concurrent callers share it instead of minting a token each. */
-let sessionPromise: Promise<string | null> | null = null;
+let sessionPending: Promise<string> | null = null;
 
 async function ensureSession(): Promise<string | null> {
   if (USING_MOCKS) return null;
   if (sessionToken) return sessionToken;
-  sessionPromise ??= (async () => {
-    try {
-      const res = await fetch(`${API_URL}/sessions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locale: "es-CO" }),
-      });
-      if (!res.ok) throw new Error(`POST /sessions → ${res.status}`);
-      const body = (await res.json()) as { token: string };
-      sessionToken = body.token;
-      return sessionToken;
-    } finally {
-      sessionPromise = null;
-    }
-  })();
-  return sessionPromise;
+  // Concurrent callers share one request instead of minting a session each.
+  sessionPending ??= (async () => {
+    const res = await fetch(`${API_URL}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locale: "es-CO" }),
+    });
+    if (!res.ok) throw new Error(`POST /sessions → ${res.status}`);
+    const body = (await res.json()) as { token: string };
+    sessionToken = body.token;
+    return body.token;
+  })().finally(() => {
+    sessionPending = null;
+  });
+  return sessionPending;
 }
 
 /** Authenticated call to the backend: adds `X-Session-Token` and a deadline. */
