@@ -21,12 +21,12 @@ cliente). Existen para poder cambiar de proveedor editando solo el adaptador.
 |---|---|---|---|
 | `VoiceEngine` *(cliente, TypeScript)* | Audio en tiempo real navegador ↔ proveedor, eventos neutrales, herramientas, interrupción y estilo ([08](08-contrato-voz-en-vivo.md) §2) | OpenAI Realtime, Gemini Live (D-11) | Planeado |
 | `SpeechSynthesizer` *(cliente, TypeScript)* | Texto de la respuesta → audio PCM16 a 24 kHz en streaming, con marcas por palabra y cancelación; solo se usa con la voz clonada y se compone sobre un `VoiceEngine` en modo solo texto ([08](08-contrato-voz-en-vivo.md) §15.2) | Cartesia (D-20); doble `FakeSynthesizer` en `web/mocks/` | Planeado |
-| `RealtimeSessionPort` | Emitir credenciales efímeras y la configuración de sesión de cada motor (instrucciones, herramientas, voz, `voice_mode` efectivo) | `integrations/realtime/{openai,gemini}` | En curso (carril B) |
-| `SpeechSessionPort` | Emitir el token de acceso de síntesis de la voz clonada (`POST /speech/session`, 600 s, alcance `tts`) | `integrations/realtime/cartesia` (D-20) | En curso (carril B) |
-| `DatasetPort` | Ejecutar consultas de **solo lectura** ya armadas por el servidor, con plazo, reintento acotado y caché etiquetada ([09](09-datos-en-vivo-datos-gov-co.md)) | `integrations/datasets/socrata_client` (SODA3) | En curso (carril B) |
-| `AffectModelPort` | Una estimación de afecto con esquema de salida, por texto o por audio + texto | `integrations/llm/affect_models` (Gemini `fast`, OpenAI `deep`, REST con `httpx`) | En curso (carril B) |
-| `AnalystPort` | Estimar afecto (texto ∥ voz), fusionar y decidir el estilo ([10](10-modelos-afecto-y-recuperacion.md) §6) | Servicio: grafo LangGraph en `services/analyst/` sobre `AffectModelPort` | En curso (carril B) |
-| `FeedbackPort` | Registrar un evento de feedback (`POST /feedback`) sin base de datos | `integrations/feedback` (registro estructurado; LangSmith pendiente) | En curso (carril B) |
+| `RealtimeSessionPort` | Emitir credenciales efímeras y la configuración de sesión de cada motor (instrucciones, herramientas, voz, `voice_mode` efectivo) | `integrations/realtime/{openai,gemini}` | Implementado |
+| `SpeechSessionPort` | Emitir el token de acceso de síntesis de la voz clonada (`POST /speech/session`, 600 s, alcance `tts`) | `integrations/realtime/cartesia` (D-20) | Implementado |
+| `DatasetPort` | Ejecutar consultas de **solo lectura** ya armadas por el servidor, con plazo, reintento acotado y caché etiquetada ([09](09-datos-en-vivo-datos-gov-co.md)) | `integrations/datasets/socrata_client` (SODA3) | Implementado |
+| `AffectModelPort` | Una estimación de afecto con esquema de salida, por texto o por audio + texto | `integrations/llm/affect_models` (Gemini `fast`, OpenAI `deep`, REST con `httpx`) | Implementado |
+| `AnalystPort` | Estimar afecto (texto ∥ voz), fusionar y decidir el estilo ([10](10-modelos-afecto-y-recuperacion.md) §6) | Servicio: grafo LangGraph en `services/analyst/` sobre `AffectModelPort` | Implementado |
+| `FeedbackPort` | Registrar un evento de feedback (`POST /feedback`) sin base de datos | `integrations/feedback` (registro estructurado; LangSmith pendiente) | Implementado |
 
 Firmas (el contrato exacto vive en `src/models/ips.py`, `src/models/voice.py` y
 `src/models/analysis.py`, y se versiona con `contract`):

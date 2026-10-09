@@ -45,10 +45,12 @@ config más reglas: nunca lo decide un LLM.
 
 | Candidato | ID verificado | Esquema válido | Filtros correctos | Anclado | Primer audio útil p50/p95 | Timeouts | Costo | Veredicto |
 |---|---|---|---|---|---|---|---|---|
-| Gemini Live | | | | | | | | |
-| OpenAI Realtime | | | | | | | | |
-| Gemini (analista, texto y voz) | | | | | | | | |
-| OpenAI (analista alterno) | | | | | | | | |
+| Gemini Live | `gemini-3.8-live` (G2) | | | | 1,7–2,2 s (G2, 2 muestras) | | | Motor 2 |
+| OpenAI Realtime | `gpt-realtime-2.1` (G2) | | | | 3,4 s; reconocimiento previo 1,3 s (G2, 1 muestra) | | | Motor 1 |
+| Gemini (analista, texto y voz) | `gemini-3.5-flash-lite` (G3) | 3/3 texto · 6/6 audio | — | — | texto p50 1,1 s · audio p50 1,4–2,2 s (un atípico de 17,7 s) | 0 (sin plazo); con plazo de 3 s → `uncertain` | — | `fast` (D-10) |
+| OpenAI (analista alterno) | `gpt-5.4-mini` (G3) | 3/3 texto · **audio no**: `gpt-audio-*` rechaza `json_schema` (400) | — | — | texto p50 1,3 s | 0 | — | `deep`, solo texto |
+
+*Celdas de motores en blanco: las mide el benchmark del carril A. Datos de G3 en [00](00-contexto-y-decisiones.md) §6.*
 
 Un casillero vacío **no** se marca como verificado. `gemini-3.5-flash-lite` es un candidato histórico del proyecto, no una disponibilidad confirmada hoy.
 
@@ -148,7 +150,8 @@ prepare ─► ┬ text_affect ──┬─► fuse ─► style_policy ─► E
 ```
 
 - **Entradas por intervención del usuario:** texto; recorte de audio WAV (≤ 30 s) **solo si hay consentimiento**; señales de interacción (duración, palabras por segundo, pausa previa, si interrumpió al agente, pregunta repetida); historial de afecto de los últimos 3 turnos (lo envía el cliente: el servidor no guarda nada).
-- `text_affect` y `acoustic_affect` son llamadas del perfil `fast` con **esquema de salida** (la segunda, multimodal: audio + transcripción). Plazo de 3 s; si fallan, el resultado es `uncertain`, **nunca** una etiqueta vieja con confianza.
+- `text_affect` y `acoustic_affect` son llamadas del perfil `fast` con **esquema de salida** (la primera con respaldo `deep`). Plazo de 3 s; si fallan, el resultado es `uncertain`, **nunca** una etiqueta vieja con confianza.
+- **`acoustic_affect` recibe solo el audio** (sin transcripción) más medidas de prosodia calculadas en el servidor (duración, volumen dBFS, variación, palabras por segundo; `services/analyst/prosody.py`). *Hallazgo de G3:* con transcripción, el modelo etiquetaba por las palabras; aun sin ella, con voz **sintética** (TTS «tenso» y «calmado» de la misma frase) devolvió las mismas etiquetas. **A-21 no está verificado**: hay que probarlo con una grabación humana real; mientras tanto la interfaz rotula la estimación por voz como tal y la fusión marca la discrepancia cuando la hay.
 - Corre **en paralelo a la respuesta** y no la retrasa (R-24): si llega después de empezar el turno siguiente, aplica desde el que sigue.
 
 ### `AffectEstimate`

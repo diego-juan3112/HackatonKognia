@@ -5,6 +5,34 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added — Reto 01, carril B (2026-10-09, rama `feat/reto-01-api`)
+- **Backend de voz implementado** (`src/api/app_voice.py`, contrato `2026-10-09.2`): `GET /health`
+  (con `voice_modes`), `POST /sessions` (token HMAC anónimo, R-28), `POST /realtime/session`
+  (OpenAI `gpt-realtime-2.1` y Gemini `gemini-3.8-live`, `voice_mode` efectivo), `POST /speech/session`
+  (token de Cartesia de 600 s, D-20), `GET /dataset/brief`, `POST /tools/{nombre}` (las 5 herramientas),
+  `POST /analysis/utterance` (JSON con WAV en base64, no multipart) y `POST /feedback`.
+- **Datos en vivo** (D-12, D-13): cliente SODA3 con plazo común, un reintento, token descartado
+  ante 403 y caché fresca/`stale`; SoQL con lista cerrada; léxico `data/lexicon.json` con
+  homónimos y distritos (`scripts/build_lexicon.py`); sobre de evidencia siempre presente.
+- **Analista** (D-16): grafo LangGraph `prepare → text ∥ acoustic → fuse → style_policy`, perfiles
+  `fast` → `deep` (D-10), prosodia local y política de estilo determinista con suavizado
+  (`config/style_policy.yaml`); prompt versionado `reto01-ips-v1` (`config/domains/reto01_ips.yaml`).
+- D-20 en `docs/00`; IDs de D-10 y D-11 cerrados; mediciones de G3 y del token de Cartesia.
+
+### Verificado
+- 121 pruebas offline en verde (`pytest`, sin red ni claves).
+- En vivo (G3, 2026-10-09): números dorados de `docs/09` §9 exactos; analista por texto 3/3 en
+  esquema; token de Cartesia 200 en ≈ 1 s.
+
+### Pendiente
+- **A-21 sin verificar:** con voz sintética el modelo no distinguió tono tenso de calmado; falta
+  una grabación humana real. Feedback a LangSmith (hoy: registro estructurado). Despliegue en
+  Vercel (G1, D-15 abierta).
+
+### Changed
+- `docs/09` §2: plazo de conexión de 2 s → 4 s (la primera conexión midió 0,8–2,7 s).
+- `docs/03`: `/analysis/utterance` pasa de multipart a JSON para no sumar `python-multipart` (R-10).
+
 ### Added
 - **Contratos de Reto 01 (2026-10-09), solo documentación: sin código ni despliegue.**
   Especificación (`docs/07`), contrato de voz en vivo (`08`), datos en vivo de
