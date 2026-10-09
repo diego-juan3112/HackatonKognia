@@ -6,6 +6,16 @@ Requisitos del reto: RETO-R08, E01–E03, M06, M07 ([07](07-reto-01-especificaci
 
 ## 1. Topología
 
+**Vigente desde el 2026-10-09 ≈ 14:25 (propuesta, pendiente de confirmar): un solo proyecto con
+[Vercel Services](https://vercel.com/docs/services)** (`vercel.json` en la raíz). Servicio `web`
+(Astro estático, raíz `web/`) público en `/`; servicio `api` (FastAPI, raíz `.`, entrypoint
+`src.api.app_voice:app`) público en `/api/*`. Vercel entrega a la API la ruta **con** el prefijo
+(`/api/health`); `StripPathPrefix` en `app_voice.py` lo quita (`API_PATH_PREFIX`, por omisión `/api`),
+así que en local siguen valiendo `/health` y compañía. La web se compila con `PUBLIC_API_URL=/api`
+(relativa, mismo dominio: sin CORS). **Sin bindings:** la web es estática y no llama a la API desde un
+servidor, solo desde el navegador. Variables de entorno: una sola vez en el proyecto. Prueba local de
+ambos servicios juntos: `vercel dev`. Lo de abajo (dos proyectos) queda como alternativa.
+
 ```
 Navegador ──HTTPS──► Vercel · proyecto web  (Astro estático)            https://<dominio>/
 Navegador ──HTTPS──► Vercel · proyecto api  (FastAPI, solo HTTP)         https://<api>/   (CORS: solo el origen del web)

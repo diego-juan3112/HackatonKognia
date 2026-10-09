@@ -66,6 +66,25 @@ def _error(status: int, code: str, message: str, retryable: bool = False,
                                  "trace_id": str(uuid.uuid4())})
 
 
+class StripPathPrefix:
+    """Pure ASGI middleware: '/api/health' -> '/health' (Vercel Services keeps the prefix)."""
+
+    def __init__(self, app, prefix: str) -> None:
+        self.app = app
+        self.prefix = prefix.rstrip("/")
+
+    async def __call__(self, scope, receive, send):
+        if self.prefix and scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            if path == self.prefix or path.startswith(self.prefix + "/"):
+                scope = dict(scope)
+                scope["path"] = path[len(self.prefix):] or "/"
+                raw = scope.get("raw_path")
+                if raw:
+                    scope["raw_path"] = raw[len(self.prefix):] or b"/"
+        await self.app(scope, receive, send)
+
+
 def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
     settings = get_settings()
 
@@ -97,6 +116,8 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
         CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "X-Session-Token"], max_age=600,
     )
+    # Added last = outermost: the prefix is gone before CORS and routing see the path.
+    app.add_middleware(StripPathPrefix, prefix=settings.api_path_prefix)
 
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:

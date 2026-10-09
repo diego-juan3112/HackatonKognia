@@ -86,8 +86,13 @@ class Settings(BaseSettings):
     # HMAC key for the anonymous session token (R-28). 32 random bytes.
     session_signing_key: str = ""
     session_token_ttl_hours: int = 2
-    # Comma-separated origins allowed by CORS (the web project).
+    # Comma-separated origins allowed by CORS (only needed when web and API live on
+    # different origins; with Vercel Services both share one domain).
     allowed_origins: str = "http://localhost:4321"
+    # Vercel Services routes /api/* to this service WITH the prefix (docs: "the service
+    # receives the original request path"). It is stripped before routing, so the same
+    # app answers /health locally and /api/health on Vercel. "" disables it.
+    api_path_prefix: str = "/api"
     # In-memory rate limit per session token and per IP (R-28).
     rate_limit_per_minute: int = 120          # per anonymous session
     rate_limit_per_ip_minute: int = 1500      # per IP: evaluators share the venue's public IP

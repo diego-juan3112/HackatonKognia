@@ -80,6 +80,17 @@ def test_health_failure_is_not_cached_for_long():
         assert tc.get("/health").json()["status"] == "ok"
 
 
+def test_routes_answer_with_and_without_the_vercel_api_prefix(client):
+    """Vercel Services forwards /api/* with the prefix; local dev calls the bare path."""
+    assert client.get("/health").status_code == 200
+    assert client.get("/api/health").json()["status"] == "ok"
+    token = client.post("/api/sessions", json={"locale": "es-CO"}).json()["token"]
+    r = client.post("/api/tools/aggregate_ips", headers={"X-Session-Token": token},
+                    json={"tool_call_id": "p1", "args": {"metric": "provider_count"}})
+    assert r.status_code == 200 and r.json()["data"]["value"] == 9320
+    assert client.get("/apiary").status_code == 404  # only the exact prefix is stripped
+
+
 def test_protected_routes_need_a_signed_session(client):
     r = client.get("/dataset/brief")
     assert r.status_code == 401 and r.json()["error"]["code"] == "SESSION_EXPIRED" and "trace_id" in r.json()
