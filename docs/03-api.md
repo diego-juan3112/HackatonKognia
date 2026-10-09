@@ -176,7 +176,7 @@ Lo anterior describe la API de la base genérica (chat con cédula). La app de R
 
 | Método y ruta | Entrada | Salida | Detalle |
 |---|---|---|---|
-| `GET /health` | — | `status` (`ok`/`degraded`), `contract`, `engines` configurados, `voice_modes` (`["engine"]` o `["engine","cloned"]`), estado de la fuente (`ok`, `ms`), perfiles de LLM | No llama a proveedores de pago |
+| `GET /health` | — | `status` (`ok`/`degraded`), `contract`, `engines` configurados, `voice_modes` (`["engine"]` o `["engine","cloned"]`), `default_voice_mode` (`cloned` si hay síntesis, D-22), `cloned_voice_engines` (`["openai"]`), estado de la fuente (`ok`, `ms`), perfiles de LLM | No llama a proveedores de pago |
 | `POST /sessions` | `locale` | 201 con `token` firmado y `expires_at` (2 h) | Anónima; sin cédula ni datos personales |
 | `POST /realtime/session` | `engine`, `conversation_id`, `seed?`, `style?`, `locale`, `voice?`, `voice_mode?` (`engine` por omisión) | `contract`, `engine`, `model`, `connect{url, protocols?, token, expires_at}`, `config{audio, voice, voice_mode, turn_detection}`, `instructions_version`, `brief?` | [08](08-contrato-voz-en-vivo.md) §3; `config.voice_mode` es el **efectivo** (`cloned` con Gemini vuelve `engine`) |
 | `POST /speech/session` | `conversation_id` | `contract`, `synth`, `model`, `connect{url, token, expires_at}`, `config{audio{encoding, sample_rate}, voice_id, language, timestamps}`, `voice_label` | Solo voz clonada ([08](08-contrato-voz-en-vivo.md) §15.3); token de 600 s con alcance `tts`; 503 `SYNTH_UNAVAILABLE` sin clave o con el proveedor caído |
