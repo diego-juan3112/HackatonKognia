@@ -42,7 +42,7 @@ producto (regla R-07). El dominio de Reto 01 es `config/domains/reto01_ips.yaml`
 | LLM | Perfiles `fast` = Gemini `gemini-3.5-flash-lite` y `deep` = OpenAI `gpt-5.4-mini` (analista); Grok y Claude opcionales; cadena de respaldo | D-10 (reemplaza D-03) |
 | Voz | Tiempo real desde el navegador: OpenAI Realtime `gpt-realtime-2.1` (motor 1) y Gemini Live `gemini-3.8-live` (motor 2) (`VoiceEngine`) + voz clonada opcional con Cartesia (`SpeechSynthesizer`) | D-11, D-20 |
 | Datos | datos.gov.co **en vivo** por SODA3 con `httpx` | D-12 |
-| Avatar 3D | Fuera de Reto 01 — ver §4 | Aplazado (D-17) |
+| Avatar 3D | VRM estilo anime con `three` + `@pixiv/three-vrm`, carga opcional con visualizador de respaldo — ver §4 | D-21 (reemplaza la parte «sin avatar 3D» de D-17) |
 | Base de datos, RAG, embeddings | PostgreSQL + pgvector + E5: **base genérica; no se usan en Reto 01** | D-02 y D-05 no aplican a Reto 01 (D-09) |
 | Frontend | Astro + TypeScript sin framework | D-17 |
 | Infraestructura como código | Terraform | Fijo (Azure Container Apps queda como alternativa, no es la ruta de Reto 01) |
@@ -58,6 +58,11 @@ activan los perfiles opcionales. **`langchain-openai` no hace falta:** el analis
 llama a los modelos por REST con `httpx` (es lo que se midió en G3, admite audio en
 línea y evita dependencias en el paquete de Vercel); LangGraph sigue orquestando el
 analista.
+
+**Dependencias del frontend (carril A, R-10), registradas el 2026-10-09:** `astro` (D-17),
+`@lucide/astro` (iconos), `three` y `@pixiv/three-vrm` (avatar, D-21). El backend local de
+desarrollo del carril A vive solo en `web/dev/`, no se despliega y copia la forma de
+`src/api/app_voice.py`; se retira cuando la API esté publicada.
 
 ## 3. Voz — decisión y evidencia
 
@@ -97,12 +102,19 @@ El token de acceso se midió con la clave del equipo (§6).
 Los modelos de tiempo real se midieron en G2 (2026-10-09): ver la sección de voz arriba y
 el anexo G2 §4.
 
-## 4. Avatar 3D — aplazado
+## 4. Avatar 3D — en el MVP (D-21)
 
-**Fuera de Reto 01 (D-17).** Queda para la fase 2; la evidencia vive en
-[anexos/us2-avatar-3d.md](anexos/us2-avatar-3d.md). **Corrección:** Ready Player Me
-ya no existe (cerrado el 2026-01-31); los candidatos vigentes son Microsoft
-RocketBox (MIT) o MetaPerson, con Three.js plano y `wawa-lipsync`.
+**Dentro de Reto 01 desde el 2026-10-09 (D-21).** Avatar VRM estilo anime con `three` +
+`@pixiv/three-vrm`, cargado de forma opcional: si falla, la consola muestra un visualizador de
+respaldo. La evidencia previa vive en [anexos/us2-avatar-3d.md](anexos/us2-avatar-3d.md)
+(Ready Player Me ya no existe, cerrado el 2026-01-31).
+
+**Modelo publicado:** `web/public/avatars/avatar-sample-c.vrm` (AvatarSample_C de pixiv/VRoid,
+13 MB, en el historial del repo público desde `1ab9065`). Condiciones oficiales de VRoid
+(vroid.pixiv.help, artículo 4402394424089): uso, edición y distribución sin crédito; prohíben
+declararlo CC0, cobrar por redistribuirlo y usarlo en un servicio de creación de personajes.
+Registro en `web/public/avatars/LICENSE.md`. **Matiz:** se descargó de un espejo de GitHub y
+que «distribución» cubra un repo público es lectura del equipo; no se reescribe la historia.
 
 ## 5. Decisiones tomadas
 
@@ -124,10 +136,11 @@ RocketBox (MIT) o MetaPerson, con Three.js plano y `wawa-lipsync`.
 | D-14 | **Excepción acotada a R-04** en el bucle de voz: el motor de voz decide los turnos y qué herramienta llamar; el backend valida cada llamada contra una lista cerrada y es **determinista** en estilo, límites y honestidad. Cualquier otra transición sigue siendo del grafo | Un motor de voz nativo controla el turno; es el costo de la latencia. *Confirmada por el equipo* | 2026-10-09 |
 | D-15 | **Despliegue en Vercel** (Astro estático + FastAPI solo HTTP; el audio va navegador ↔ proveedor) con **Dockerfile de respaldo**; tope de 20 min para decidir el empaquetado. *Reemplaza «Azure Container Apps (fijo)».* | Despliegue rápido; Vercel limita la conexión a 300 s (Hobby) y el cuerpo a 4,5 MB, y sin WebSocket propio no importa | 2026-10-09 (pendiente de cerrar con G1) |
 | D-16 | **Afecto multimodal (texto + voz) y política de estilo** («psicología»): estimaciones inciertas, preferencia explícita por encima, sin diagnóstico, con aviso, consentimiento y opción de apagarlo ([10](10-modelos-afecto-y-recuperacion.md) §6) | Decisión del equipo: es Must. Conserva las salvaguardas de sdd_ips | 2026-10-09 |
-| D-17 | **Frontend Astro + TypeScript sin framework**; **sin avatar 3D** en el MVP | Tiempo; Three.js plano ya se midió y queda para la fase 2 | 2026-10-09 |
+| D-17 | **Frontend Astro + TypeScript sin framework**; ~~sin avatar 3D en el MVP~~ (*esa parte, reemplazada por D-21*) | Tiempo; Three.js plano ya se midió y queda para la fase 2 | 2026-10-09 |
 | D-18 | **Estado canónico en el navegador**, recuperación acotada (≤ 2 intentos de motor y ≤ 2 de fuente, plazo de 6 s) y **conmutación de motor** con un sobre de contexto neutral ([10](10-modelos-afecto-y-recuperacion.md) §3–§5) | Sin base de datos y con sesiones de proveedor que caducan (Gemini ≈ 10 min) | 2026-10-09 |
 | D-19 | **`main` es la rama de integración y de producción**: los docs se fusionan a `main` en la Puerta 0 y ambas personas parten de ahí ([12](12-guia-de-trabajo-2-personas.md)) | Simplicidad para dos personas; Vercel despliega producción desde `main` | 2026-10-09 |
 | D-20 | **Voz clonada opcional con Cartesia.** Con «voz clonada» el motor en tiempo real (D-11) sigue escuchando, decidiendo el turno y llamando herramientas, pero entrega **solo texto**; el navegador lo sintetiza por frases con el puerto de cliente `SpeechSynthesizer` (adaptador Cartesia, token de acceso emitido por el backend, R-28) y lo reproduce con el mismo reproductor ([08](08-contrato-voz-en-vivo.md) §15). **La voz del motor sigue siendo la base y la degradación automática** (R-25); la clonada es la voz por omisión solo si G2 confirma salida de solo texto, latencia dentro de los objetivos de [07](07-reto-01-especificacion.md) §8 y texto escuchado fiable. Solo se clona la voz de una persona del equipo, con su consentimiento, y se avisa de que es voz sintética. *No reemplaza a D-11; levanta el «Won't: voz clonada» de [07](07-reto-01-especificacion.md) §4.* | El equipo contrató Cartesia para tener voz propia; hacerlo como puerto opcional evita que un proveedor más ponga en riesgo la demo | 2026-10-09 |
+| D-21 | **Avatar 3D en el MVP:** VRM estilo anime con `three` + `@pixiv/three-vrm`, cargado de forma opcional (si falla, visualizador de respaldo). *Reemplaza la parte «sin avatar 3D» de D-17.* Dependencias nuevas registradas en §2 (R-10): `three`, `@pixiv/three-vrm`, `@lucide/astro`, `astro`. Modelo y licencia en §4 | Decisión del equipo: el asistente habla con voz clonada masculina y lleva avatar masculino | 2026-10-09 |
 
 ## 6. Mediciones del 2026-10-09 (consultas reales)
 
