@@ -116,6 +116,11 @@ Convenciones: Conventional Commits ([06](06-flujo-y-convenciones.md)), un commit
 primero: repite `pull --rebase`. Los worktrees de carril se despliegan como *preview* de Vercel para
 probar el micrófono sobre HTTPS.
 
+**Aviso (Vercel Hobby, [11](11-despliegue.md) §6):** hasta que G1 confirme que Vercel no bloquea los
+commits del otro autor, si el despliegue de `main` sale bloqueado tras un *push* de A, A abre un PR
+de su rama y **B lo fusiona en GitHub** (el commit de fusión queda a nombre de B). Si aun así bloquea,
+`vercel deploy --prod` desde el equipo de B.
+
 ## 7. Cambio de contrato (R-30)
 
 1. Doc y esquema en un commit pequeño (`docs/08` y `web/src/voice/types.ts`, o `docs/09–10` y `src/models/`).
