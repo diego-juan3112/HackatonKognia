@@ -116,8 +116,14 @@ class Settings(BaseSettings):
     realtime_turn_detection: str = "server_vad"   # server_vad | semantic_vad
     realtime_silence_duration_ms: int = 500
     realtime_prefix_padding_ms: int = 300
-    realtime_vad_threshold: float = 0.5
+    # 0.65 (was 0.5): ambient noise was cutting the agent off (team report, 2026-10-09).
+    realtime_vad_threshold: float = 0.65
     realtime_vad_eagerness: str = "high"          # semantic_vad only: low | medium | high | auto
+    # False: the server does NOT cut the agent on any sound; the browser interrupts only after
+    # >= 1 s of continuous user speech (docs/08 section 6). True restores provider barge-in.
+    realtime_interrupt_response: bool = False
+    realtime_noise_reduction: str = "near_field"  # near_field | far_field | "" (off)
+    gemini_start_sensitivity: str = "START_SENSITIVITY_LOW"
     openai_transcribe_model: str = "gpt-4o-mini-transcribe"
     gemini_live_model: str = "gemini-3.8-live"
     gemini_live_voice: str = "Kore"

@@ -75,12 +75,14 @@ def build_container(s: Settings) -> VoiceContainer:
         engines["openai"] = OpenAIRealtimeSession(
             api_key=s.openai_api_key, model=s.openai_realtime_model, voice=s.openai_realtime_voice,
             transcribe_model=s.openai_transcribe_model, ttl_s=s.realtime_credential_ttl_s,
-            turn_detection=turn_detection)
+            turn_detection=turn_detection, interrupt_response=s.realtime_interrupt_response,
+            noise_reduction=s.realtime_noise_reduction)
     if s.gemini_api_key:
         engines["gemini"] = GeminiLiveSession(api_key=s.gemini_api_key, model=s.gemini_live_model,
                                               voice=s.gemini_live_voice,
                                               silence_duration_ms=s.realtime_silence_duration_ms,
-                                              prefix_padding_ms=s.realtime_prefix_padding_ms)
+                                              prefix_padding_ms=s.realtime_prefix_padding_ms,
+                                              start_sensitivity=s.gemini_start_sensitivity or None)
     speech = CartesiaSpeechSession(api_key=s.cartesia_api_key, voice_id=s.cartesia_voice_id,
                                    model=s.cartesia_model, version=s.cartesia_version,
                                    voice_label=s.cartesia_voice_label, ttl_s=s.speech_token_ttl_s)

@@ -166,8 +166,15 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
         }
 
     @app.post("/sessions", status_code=201)
-    async def create_session(body: SessionCreateRequest | None = None,
+    async def create_session(request: Request, body: SessionCreateRequest | None = None,
                              c: VoiceContainer = Depends(container)) -> dict[str, str]:
+        # Load test 2026-10-09 (H2): rotating sessions could drain the shared per-IP quota and
+        # leave every evaluator on the venue Wi-Fi with 429. Minting is limited per IP too.
+        fwd = request.headers.get("x-forwarded-for", "")
+        ip = fwd.split(",")[0].strip() or (request.client.host if request.client else "?")
+        wait = c.limiter.check(f"mint:{ip}")
+        if wait is not None:
+            raise ApiError(429, "RATE_LIMITED", "Demasiadas sesiones nuevas.", True, {"Retry-After": str(int(wait))})
         token, expires_at = c.sessions.issue((body or SessionCreateRequest()).locale)
         background(warm_dataset(c, prefetch=False))  # the first query should not pay the TLS handshake
         return {"token": token, "expires_at": expires_at}

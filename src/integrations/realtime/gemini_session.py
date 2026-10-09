@@ -32,7 +32,9 @@ class GeminiLiveSession:
 
     def __init__(self, *, api_key: str, model: str, voice: str, ttl_s: int = 1800,
                  silence_duration_ms: int | None = None, prefix_padding_ms: int | None = None,
+                 start_sensitivity: str | None = "START_SENSITIVITY_LOW",
                  transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._start_sensitivity = start_sensitivity
         self.model = model
         self._key = api_key
         self._voice = voice
@@ -68,11 +70,15 @@ class GeminiLiveSession:
         }
         if self._silence_ms is not None:
             # Faster end-of-speech detection (same knob as OpenAI's silence_duration_ms).
-            body["bidiGenerateContentSetup"]["realtimeInputConfig"] = {"automaticActivityDetection": {
+            detection = {
                 "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH",
                 "silenceDurationMs": self._silence_ms,
                 "prefixPaddingMs": self._prefix_ms if self._prefix_ms is not None else 300,
-            }}
+            }
+            if self._start_sensitivity:
+                # Low start sensitivity: ambient noise should not count as the user speaking.
+                detection["startOfSpeechSensitivity"] = self._start_sensitivity
+            body["bidiGenerateContentSetup"]["realtimeInputConfig"] = {"automaticActivityDetection": detection}
         try:
             async with httpx.AsyncClient(transport=self._transport, timeout=8.0) as c:
                 r = await c.post("https://generativelanguage.googleapis.com/v1alpha/auth_tokens",

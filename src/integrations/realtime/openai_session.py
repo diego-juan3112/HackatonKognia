@@ -25,7 +25,11 @@ class OpenAIRealtimeSession:
     supports_text_only = True  # output_modalities ["text"] measured in G2 -> cloned voice
 
     def __init__(self, *, api_key: str, model: str, voice: str, transcribe_model: str, ttl_s: int = 600,
-                 turn_detection: dict | None = None, transport: httpx.AsyncBaseTransport | None = None) -> None:
+                 turn_detection: dict | None = None, interrupt_response: bool = False,
+                 noise_reduction: str = "near_field",
+                 transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._interrupt = interrupt_response
+        self._noise = noise_reduction
         self.model = model
         self._key = api_key
         self._voice = voice
@@ -43,12 +47,14 @@ class OpenAIRealtimeSession:
         if not self._key:
             raise ProviderUnavailable("ENGINE_CONNECT_FAILED", "OpenAI no está configurado")
         text_only = setup.voice_mode == "cloned"
-        turn_detection = {**self._turn_detection, "create_response": True, "interrupt_response": True}
+        turn_detection = {**self._turn_detection, "create_response": True, "interrupt_response": self._interrupt}
         audio: dict = {
             "input": {"format": {"type": "audio/pcm", "rate": 24000},
                       "transcription": {"model": self._transcribe, "language": "es"},
                       "turn_detection": turn_detection},
         }
+        if self._noise:
+            audio["input"]["noise_reduction"] = {"type": self._noise}
         if not text_only:
             audio["output"] = {"format": {"type": "audio/pcm", "rate": 24000}, "voice": setup.voice or self._voice}
         body = {
