@@ -7,11 +7,11 @@
 
 <section class="card board-card api" id="api" data-testid="api-panel" data-section="api" aria-labelledby="api-title">
   <header class="board-head">
-    <h2 id="api-title">API en vivo <b class="count num" id="api-count" hidden></b></h2>
+    <h2 id="api-title">Herramientas que usó <b class="count num" id="api-count" hidden></b></h2>
     <p id="api-origin"></p>
   </header>
   <details class="tool-catalog" id="tool-catalog" data-testid="tool-catalog">
-    <summary>Herramientas disponibles <b class="num" id="tool-catalog-count"></b></summary>
+    <summary>Qué sabe hacer el agente <b class="num" id="tool-catalog-count"></b></summary>
     <ul id="tool-catalog-list"></ul>
   </details>
   <div class="tool-turns" id="tool-turns" data-testid="tool-turns"></div>
@@ -20,15 +20,24 @@
 
 <script>
   import { bind, byId, dur, esc, panel, reconcile } from "../scripts/dom";
-  import { evidenceBody } from "../scripts/evidence";
+  import { evidenceBody, toolLabel } from "../scripts/evidence";
   import { USING_MOCKS } from "../voice/api";
   import * as controller from "../voice/controller";
+
+  const RESULT: Record<string, string> = {
+    ok: "respondió",
+    empty: "sin registros",
+    ambiguous: "pidió aclarar",
+    unavailable: "la fuente no respondió",
+    invalid: "la rehízo",
+  };
+  const ORIGIN: Record<string, string> = { live: "en vivo", fresh: "guardado hace menos de 1 min", stale: "respuesta anterior" };
 
   panel("api", (root) => {
     const list = byId("api-list");
     const origin = byId("api-origin");
     if (origin) {
-      origin.textContent = USING_MOCKS ? "Sin backend: respuestas grabadas el 9-oct-2026." : "Consultas a datos.gov.co, de la más reciente a la más antigua.";
+      origin.textContent = USING_MOCKS ? "Sin backend: respuestas grabadas el 9-oct-2026." : "Cada dato que dice el agente sale de una consulta en vivo a datos.gov.co. La más reciente va primero.";
     }
     root.addEventListener("click", (e) => {
       const id = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-requery]")?.dataset.requery;
@@ -41,8 +50,8 @@
       if (catalogCount) catalogCount.textContent = String(s.toolCatalog.length);
       if (catalogList) {
         catalogList.innerHTML = s.toolCatalog.length
-          ? s.toolCatalog.map((t) => `<li><code>${esc(t.name)}</code> <span>${esc(t.description)}</span></li>`).join("")
-          : "<li>El backend no anunció su catálogo (GET /health).</li>";
+          ? s.toolCatalog.map((t) => `<li><strong>${esc(toolLabel(t.name))}</strong> <span>${esc(t.description)}</span></li>`).join("")
+          : "<li>El servidor todavía no envió la lista.</li>";
       }
       if (turnsBox) {
         // Per turn: which tools the agent used, with status, time, rows and cache.
@@ -56,12 +65,12 @@
           return tools
             .map(
               (t, i) =>
-                `<tr>${i === 0 ? `<th rowspan="${tools.length}">${n ? `Turno ${n}` : "—"}</th>` : ""}<td><code>${esc(t.name)}</code></td><td class="st-${esc(t.status ?? "pending")}">${esc(t.status ?? "en curso")}</td><td>${t.trace ? dur(t.trace.ms) : "—"}</td><td>${t.trace ? esc(t.trace.rows) : "—"}</td><td>${t.trace ? esc(t.trace.cache_status === "live" ? "en vivo" : t.trace.cache_status) : "—"}</td></tr>`,
+                `<tr>${i === 0 ? `<th rowspan="${tools.length}">${n ? `Turno ${n}` : "—"}</th>` : ""}<td>${esc(toolLabel(t.name))}</td><td class="st-${esc(t.status ?? "pending")}">${esc(RESULT[t.status ?? ""] ?? "en curso")}</td><td>${t.trace ? dur(t.trace.ms) : "—"}</td><td>${t.trace ? esc(ORIGIN[t.trace.cache_status] ?? "—") : "—"}</td></tr>`,
             )
             .join("");
         });
         turnsBox.innerHTML = rows.length
-          ? `<table><caption>Herramientas por turno</caption><thead><tr><th>Turno</th><th>Herramienta</th><th>Estado</th><th>Tiempo</th><th>Filas</th><th>Caché</th></tr></thead><tbody>${rows.join("")}</tbody></table>`
+          ? `<table><caption>Qué hizo en cada turno</caption><thead><tr><th>Turno</th><th>Qué hizo</th><th>Resultado</th><th>Tardó</th><th>Origen del dato</th></tr></thead><tbody>${rows.join("")}</tbody></table>`
           : "";
       }
     });
@@ -82,7 +91,7 @@
               html: evidenceBody(t, s),
               testid: "evidence-card",
             }))
-          : [{ key: "empty", cls: "board-empty", html: "Cada consulta aparece aquí con su SoQL, tiempo, filas, fuente y corte." }],
+          : [{ key: "empty", cls: "board-empty", html: "Cuando el agente consulte la fuente, aquí verás qué buscó, qué encontró y cuánto tardó." }],
       );
     });
     return () => {
@@ -147,6 +156,22 @@
     line-height: 1.5rem;
     text-align: center;
     vertical-align: 0.15em;
+  }
+
+  .api-item .tool-name {
+    font-size: var(--t-sm);
+  }
+
+  .api-item .tech summary {
+    width: fit-content;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .api-item .tech[open] summary {
+    margin-bottom: var(--s-2);
   }
 
   .api-item {

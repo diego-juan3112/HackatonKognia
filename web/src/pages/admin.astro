@@ -14,6 +14,7 @@ import AffectPanel from "../components/AffectPanel.astro";
 import ApiPanel from "../components/ApiPanel.astro";
 import IconBank from "../components/IconBank.astro";
 import LatencyHud from "../components/LatencyHud.astro";
+import Recovery from "../components/Recovery.astro";
 import Orb from "../components/Orb.astro";
 import Transcript from "../components/Transcript.astro";
 
@@ -21,8 +22,9 @@ const views = [
   { id: "agente", label: "Agente" },
   { id: "emociones", label: "Emociones" },
   { id: "transcripcion", label: "Transcripción" },
-  { id: "api", label: "API" },
-  { id: "latencia", label: "Latencia" },
+  { id: "api", label: "Herramientas" },
+  { id: "recuperacion", label: "Recuperación" },
+  { id: "latencia", label: "Tiempos" },
 ];
 ---
 
@@ -50,8 +52,9 @@ const views = [
     <div class="board">
       <AdminControls />
       <AffectPanel />
-      <Transcript />
       <ApiPanel />
+      <Recovery />
+      <Transcript />
       <LatencyHud />
     </div>
   </div>
@@ -241,6 +244,7 @@ const views = [
     .admin[data-view="emociones"] .board > :global([data-section="emociones"]),
     .admin[data-view="transcripcion"] .board > :global([data-section="transcripcion"]),
     .admin[data-view="api"] .board > :global([data-section="api"]),
+    .admin[data-view="recuperacion"] .board > :global([data-section="recuperacion"]),
     .admin[data-view="latencia"] .board > :global([data-section="latencia"]) {
       display: block;
     }
@@ -279,8 +283,9 @@ const views = [
 
     .board > :global([data-section="agente"]) { grid-column: span 5; }
     .board > :global([data-section="emociones"]) { grid-column: span 7; }
-    .board > :global([data-section="transcripcion"]) { grid-column: span 6; }
-    .board > :global([data-section="api"]) { grid-column: span 6; }
+    .board > :global([data-section="api"]) { grid-column: span 7; }
+    .board > :global([data-section="recuperacion"]) { grid-column: span 5; }
+    .board > :global([data-section="transcripcion"]) { grid-column: 1 / -1; }
     .board > :global([data-section="latencia"]) { grid-column: 1 / -1; }
 
     .board :global(.board-scroll) {
@@ -291,7 +296,5 @@ const views = [
   @media (min-width: 1280px) {
     .board > :global([data-section="agente"]) { grid-column: span 4; }
     .board > :global([data-section="emociones"]) { grid-column: span 8; }
-    .board > :global([data-section="transcripcion"]) { grid-column: span 5; }
-    .board > :global([data-section="api"]) { grid-column: span 7; }
   }
 </style>

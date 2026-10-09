@@ -1,0 +1,118 @@
+---
+/**
+ * «Recuperación» (F-07, A-09, A-23): every incident of the conversation in
+ * plain language, each with what the agent did about it. Derived from the
+ * store only: notices, failed tool calls, interruptions, corrections, retries.
+ */
+---
+
+<section class="card board-card recovery" id="recovery" data-testid="recovery-panel" data-section="recuperacion" aria-labelledby="recovery-title">
+  <header class="board-head">
+    <h2 id="recovery-title">Recuperación ante fallos</h2>
+    <p id="recovery-summary"></p>
+  </header>
+  <ol class="recovery-list board-scroll" id="recovery-list" aria-live="polite" tabindex="0" aria-label="Incidentes y cómo se resolvieron"></ol>
+</section>
+
+<script>
+  import { bind, byId, clock, esc, panel, reconcile, type KeyedItem } from "../scripts/dom";
+  import { toolLabel } from "../scripts/evidence";
+  import type { ConsoleState } from "../voice/store";
+
+  interface Incident {
+    key: string;
+    t: number;
+    kind: "ok" | "warn" | "bad";
+    what: string;
+    did: string;
+  }
+
+  const TOOL_FAIL: Record<string, [string, string]> = {
+    empty: ["no encontró registros", "Lo dijo tal cual, sin inventar una cifra."],
+    ambiguous: ["encontró varias opciones", "Preguntó cuál era antes de responder."],
+    unavailable: ["la fuente no respondió", "Avisó que el dato no está disponible, sin inventarlo."],
+    invalid: ["armó mal la pregunta", "Recibió la pista del sistema y la volvió a hacer."],
+  };
+
+  function incidents(s: ConsoleState): Incident[] {
+    const out: Incident[] = [];
+    for (const n of s.notices) {
+      if (n.kind === "info") continue;
+      out.push(
+        n.kind === "error"
+          ? { key: `n-${n.id}`, t: n.t, kind: "bad", what: n.text, did: "La conversación sigue; puedes repetir la pregunta." }
+          : { key: `n-${n.id}`, t: n.t, kind: "warn", what: n.text, did: "El cambio fue automático y la conversación continuó." },
+      );
+    }
+    for (const t of s.tools) {
+      const fail = t.status && t.status !== "ok" ? TOOL_FAIL[t.status] : undefined;
+      if (fail) out.push({ key: `t-${t.tool_call_id}`, t: t.t_call, kind: t.status === "unavailable" ? "bad" : "warn", what: `«${toolLabel(t.name)}» ${fail[0]}.`, did: fail[1] });
+    }
+    for (const u of s.utterances) {
+      if (u.correction) out.push({ key: `c-${u.id}`, t: u.correction.t, kind: "ok", what: `El usuario corrigió: «${u.correction.text}».`, did: "El agente descartó el dato anterior y volvió a consultar." });
+      if (u.role === "agent" && u.delivered_text !== undefined) out.push({ key: `i-${u.id}`, t: u.t_start, kind: "ok", what: "El usuario interrumpió al agente.", did: "Dejó de hablar de inmediato y escuchó." });
+    }
+    for (const t of s.turns) {
+      if (t.attempts > 1) out.push({ key: `a-${t.turn_id}`, t: 0, kind: "warn", what: `El turno ${t.n} necesitó ${t.attempts} intentos.`, did: "Reintentó dentro del límite y respondió." });
+    }
+    return out.sort((a, b) => b.t - a.t);
+  }
+
+  panel("recovery", () => {
+    const list = byId("recovery-list");
+    const summary = byId("recovery-summary");
+    return bind(["notices", "tools", "transcript", "latency"], (s) => {
+      const items = incidents(s);
+      const serious = items.filter((i) => i.kind !== "ok").length;
+      if (summary) {
+        const turns = `${s.turns.length} ${s.turns.length === 1 ? "turno" : "turnos"}`;
+        summary.textContent = !s.turns.length && !items.length ? "" : serious ? `${serious} ${serious === 1 ? "incidente" : "incidentes"} en ${turns}` : "Sin fallos hasta ahora";
+      }
+      if (!list) return;
+      const rows: KeyedItem[] = items.length
+        ? items.map((i) => ({
+            key: i.key,
+            cls: `rec-item is-${i.kind}`,
+            html: `<time class="mono">${i.t ? clock(i.t) : ""}</time><div><p class="what">${esc(i.what)}</p><p class="did">${esc(i.did)}</p></div>`,
+          }))
+        : [{ key: "empty", cls: "board-empty", html: "Aquí aparece cada tropiezo (una interrupción, una corrección, la fuente caída, un cambio de motor o de voz) y lo que hizo el agente para seguir." }];
+      reconcile(list, rows);
+    });
+  });
+</script>
+
+<style is:global>
+  .recovery-list {
+    padding: 0;
+    list-style: none;
+  }
+
+  .rec-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--s-3);
+    padding: var(--s-3) 0 var(--s-3) var(--s-3);
+    border-top: 1px solid var(--border);
+    border-left: 3px solid var(--border-strong);
+  }
+
+  .rec-item.is-ok { border-left-color: var(--accent-ink); }
+  .rec-item.is-warn { border-left-color: var(--primary); }
+  .rec-item.is-bad { border-left-color: var(--danger); }
+
+  .rec-item time {
+    min-width: 4.5ch;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .rec-item .what {
+    font-size: var(--t-sm);
+    font-weight: 600;
+  }
+
+  .rec-item .did {
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+  }
+</style>

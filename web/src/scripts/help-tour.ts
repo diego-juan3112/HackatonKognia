@@ -100,7 +100,7 @@ const STEPS: Record<string, Step[]> = {
     },
     {
       anchors: [tid("api-panel")],
-      title: "API en vivo",
+      title: "Herramientas que usó",
       text: "Cada consulta que el agente hace a datos.gov.co, con su SoQL y el resultado.",
     },
     {

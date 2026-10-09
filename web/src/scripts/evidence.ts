@@ -11,16 +11,53 @@ import { dur, esc, icon, num } from "./dom";
 
 const CACHE: Record<CacheStatus, { cls: string; label: string; title: string }> = {
   live: { cls: "tag-live", label: "en vivo", title: "Consulta recién hecha a la fuente" },
-  fresh: { cls: "tag-fresh", label: "fresh", title: "Respuesta en caché de menos de 60 segundos" },
-  stale: { cls: "tag-stale", label: "stale", title: "La fuente falló: se sirve una respuesta anterior" },
+  fresh: { cls: "tag-fresh", label: "reciente", title: "Respuesta guardada hace menos de 60 segundos" },
+  stale: { cls: "tag-stale", label: "respuesta anterior", title: "La fuente falló: se sirve una respuesta anterior" },
 };
 
 const STATUS: Record<ToolStatus, string> = {
   ok: "",
-  empty: "Sin resultados",
-  ambiguous: "Ambiguo: hay que aclarar",
-  unavailable: "No disponible",
-  invalid: "Consulta inválida",
+  empty: "No encontró registros",
+  ambiguous: "Varias opciones: pidió aclarar",
+  unavailable: "La fuente no respondió",
+  invalid: "Pregunta mal armada: la rehízo",
+};
+
+/** What each tool does, in words a non-technical reader understands. */
+export const TOOL_LABEL: Record<string, string> = {
+  search_ips: "Buscar IPS",
+  get_ips_details: "Ver el detalle de una IPS",
+  aggregate_ips: "Contar o sumar",
+  compare_ips: "Comparar IPS",
+  correct_context: "Corregir lo entendido",
+  verify_registration: "Verificar si una IPS está registrada",
+  area_profile: "Resumir un departamento o municipio",
+  compare_areas: "Comparar zonas",
+  dataset_info: "Explicar qué contiene la fuente",
+};
+
+export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
+
+const ARG_LABEL: Record<string, string> = {
+  department: "Departamento",
+  departamento: "Departamento",
+  municipality: "Municipio",
+  municipio: "Municipio",
+  name: "Nombre",
+  nature: "Naturaleza",
+  naturaleza: "Naturaleza",
+  level: "Nivel",
+  capacity_group: "Grupo",
+  capacity_type: "Tipo",
+  site_key: "Sede",
+  provider_code: "Código",
+  topic: "Tema",
+};
+
+const METRIC: Record<string, string> = {
+  provider_count: "Número de IPS",
+  site_count: "Número de sedes",
+  capacity_sum: "Suma de capacidad",
 };
 
 const WARNING: Record<WarningCode, string> = {
@@ -48,13 +85,19 @@ function soql(text: string): string {
 
 function argsLine(entry: ToolEntry): string {
   const a = entry.args;
-  const filters = (a.filters ?? {}) as Record<string, unknown>;
   const parts: string[] = [];
-  if (a.metric) parts.push(String(a.metric));
-  for (const [k, v] of Object.entries(filters)) parts.push(`${k} = ${String(v)}`);
-  if (a.group_by) parts.push(`por ${String(a.group_by)}`);
-  if (a.top_n) parts.push(`top ${String(a.top_n)}`);
-  if (a.field) parts.push(`${String(a.field)} → ${String(a.value)}`);
+  if (a.metric) parts.push(METRIC[String(a.metric)] ?? String(a.metric));
+  const flat = { ...a, ...((a.filters ?? {}) as Record<string, unknown>) } as Record<string, unknown>;
+  for (const [k, v] of Object.entries(flat)) {
+    if (ARG_LABEL[k] && (typeof v === "string" || typeof v === "number")) parts.push(`${ARG_LABEL[k]}: ${String(v)}`);
+  }
+  if (Array.isArray(a.areas)) {
+    parts.push((a.areas as Record<string, unknown>[]).map((x) => String(x.municipality ?? x.department ?? "")).filter(Boolean).join(" frente a "));
+  }
+  if (Array.isArray(a.site_keys)) parts.push(`${a.site_keys.length} sedes`);
+  if (a.group_by) parts.push(`agrupado por ${ARG_LABEL[String(a.group_by)]?.toLowerCase() ?? String(a.group_by)}`);
+  if (a.top_n) parts.push(`los ${String(a.top_n)} primeros`);
+  if (a.field) parts.push(`${ARG_LABEL[String(a.field)] ?? String(a.field)} → ${String(a.value)}`);
   return parts.join(" · ");
 }
 
@@ -111,7 +154,7 @@ export function summaryLine(t: ToolEntry): string {
 /** Full body of an entry (everything but the outer list item). */
 export function evidenceBody(t: ToolEntry, s: ConsoleState): string {
   const env = t.evidence_ref ? s.evidence[t.evidence_ref] : undefined;
-  const head = `<div class="head"><code class="mono">${esc(t.name)}</code><span class="args">${esc(argsLine(t))}</span></div>`;
+  const head = `<div class="head"><strong class="tool-name">${esc(toolLabel(t.name))}</strong><span class="args">${esc(argsLine(t))}</span></div>`;
   if (!t.trace || !t.status) return `${head}<p class="waiting">Consultando datos.gov.co…</p>`;
   const fetched = env ? new Date(env.evidence.fetched_at).toLocaleTimeString("es-CO") : "";
   const cutoff = env?.evidence.cutoff_raw.replace(/\s+/g, " ").replace(/^Fecha corte REPS:\s*/i, "") ?? "";
@@ -120,14 +163,17 @@ export function evidenceBody(t: ToolEntry, s: ConsoleState): string {
   const canRequery = t.name !== "correct_context" && t.status === "ok" && !t.invalidated;
   return `${t.invalidated ? `<p class="void">${icon("split")} Evidencia invalidada por una corrección</p>` : ""}
     ${head}
-    ${t.trace.soql ? `<pre class="mono soql" data-testid="soql" tabindex="0" aria-label="Consulta SoQL"><code>${soql(t.trace.soql)}</code></pre>` : ""}
     <p class="meta">
       ${badge(t)}
-      <span class="num"><strong>${dur(t.trace.ms)}</strong></span>
-      <span class="num"><strong>${num(t.trace.rows)}</strong> ${t.trace.rows === 1 ? "fila" : "filas"}</span>
+      <span class="num">tardó <strong>${dur(t.trace.ms)}</strong></span>
     </p>
     ${error}
     ${result(env)}
+    <details class="tech">
+      <summary>Detalle técnico</summary>
+      <p class="meta"><code class="mono">${esc(t.name)}</code><span class="num"><strong>${num(t.trace.rows)}</strong> ${t.trace.rows === 1 ? "fila" : "filas"}</span></p>
+      ${t.trace.soql ? `<pre class="mono soql" data-testid="soql" tabindex="0" aria-label="Consulta SoQL"><code>${soql(t.trace.soql)}</code></pre>` : ""}
+    </details>
     ${env && env.status === "ok" ? `<p class="src">Fuente: datos.gov.co, conjunto ${esc(env.evidence.dataset_id)} (MinSalud, REPS). Corte: ${esc(cutoff)}. Consultado a las ${fetched.replace(/\.\s*$/, "")}.</p>` : ""}
     ${warnings ? `<ul class="warnings">${warnings}</ul>` : ""}
     ${requeryLine(t)}
