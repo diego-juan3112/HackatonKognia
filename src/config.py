@@ -10,6 +10,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -104,8 +105,18 @@ class Settings(BaseSettings):
     style_policy_path: Path = REPO_ROOT / "config" / "style_policy.yaml"
 
     # -- Voice engines (D-11, verified in G2) --------------------------------
-    openai_realtime_model: str = "gpt-realtime-2.1"
+    # VOICE_OPENAI_MODEL: gpt-realtime-2.1 (spoke the acknowledgement on its own in G2)
+    # or gpt-realtime (0.9-1.3 s faster in G2, no acknowledgement by itself).
+    openai_realtime_model: str = Field(
+        default="gpt-realtime-2.1", validation_alias=AliasChoices("VOICE_OPENAI_MODEL", "OPENAI_REALTIME_MODEL"))
     openai_realtime_voice: str = "marin"
+    # End-of-speech detection (latency vs cutting off people who pause). Measured with
+    # scripts/bench_models.py before changing the defaults (docs/00 section 6).
+    realtime_turn_detection: str = "server_vad"   # server_vad | semantic_vad
+    realtime_silence_duration_ms: int = 500
+    realtime_prefix_padding_ms: int = 300
+    realtime_vad_threshold: float = 0.5
+    realtime_vad_eagerness: str = "high"          # semantic_vad only: low | medium | high | auto
     openai_transcribe_model: str = "gpt-4o-mini-transcribe"
     gemini_live_model: str = "gemini-3.8-live"
     gemini_live_voice: str = "Kore"

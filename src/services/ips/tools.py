@@ -102,6 +102,32 @@ class IpsToolService:
             "correct_context": self._correct_context,
         }
 
+    # Most likely questions (brief suggestions and the demo script). Prefetching them
+    # through the tools themselves guarantees the SoQL is byte-identical to what the
+    # model will ask, so the 60 s cache hits and the answer is labelled "fresh".
+    LIKELY: tuple[tuple[str, dict[str, Any]], ...] = (
+        ("aggregate_ips", {"metric": "provider_count"}),
+        ("aggregate_ips", {"metric": "provider_count", "group_by": "nature"}),
+        ("aggregate_ips", {"metric": "site_count", "group_by": "nature"}),
+        ("aggregate_ips", {"metric": "capacity_sum", "filters": {"capacity_group": "CAMAS"}}),
+        ("aggregate_ips", {"metric": "provider_count", "group_by": "department", "top_n": 5}),
+        ("aggregate_ips", {"metric": "capacity_sum", "group_by": "municipality", "top_n": 5,
+                           "filters": {"capacity_group": "CAMAS"}}),
+    )
+
+    async def prefetch(self) -> int:
+        """Warm the dataset cache with the likely aggregates, in parallel. Never raises."""
+        async def one(name: str, args: dict[str, Any]) -> bool:
+            try:
+                parsed = TOOL_ARGS[name].model_validate(args)
+                req = ToolRequest(tool_call_id=f"prefetch:{name}", args=args)
+                env = await self._handlers[name](req, parsed, Deadline(self._deadline_s))
+                return env.status == "ok"
+            except Exception:  # noqa: BLE001 -- best effort, off the critical path
+                return False
+        results = await asyncio.gather(*(one(n, a) for n, a in self.LIKELY))
+        return sum(results)
+
     # -- entry point ---------------------------------------------------------
 
     async def run(self, name: str, req: ToolRequest) -> ToolEnvelope:

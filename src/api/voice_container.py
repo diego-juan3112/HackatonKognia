@@ -64,13 +64,22 @@ def build_container(s: Settings) -> VoiceContainer:
     instructions, version = load_instructions(s.reto01_domain_path)
 
     engines = {}
+    if s.realtime_turn_detection == "semantic_vad":
+        turn_detection = {"type": "semantic_vad", "eagerness": s.realtime_vad_eagerness}
+    else:
+        turn_detection = {"type": "server_vad", "threshold": s.realtime_vad_threshold,
+                          "prefix_padding_ms": s.realtime_prefix_padding_ms,
+                          "silence_duration_ms": s.realtime_silence_duration_ms}
     if s.openai_api_key:
         engines["openai"] = OpenAIRealtimeSession(
             api_key=s.openai_api_key, model=s.openai_realtime_model, voice=s.openai_realtime_voice,
-            transcribe_model=s.openai_transcribe_model, ttl_s=s.realtime_credential_ttl_s)
+            transcribe_model=s.openai_transcribe_model, ttl_s=s.realtime_credential_ttl_s,
+            turn_detection=turn_detection)
     if s.gemini_api_key:
         engines["gemini"] = GeminiLiveSession(api_key=s.gemini_api_key, model=s.gemini_live_model,
-                                              voice=s.gemini_live_voice)
+                                              voice=s.gemini_live_voice,
+                                              silence_duration_ms=s.realtime_silence_duration_ms,
+                                              prefix_padding_ms=s.realtime_prefix_padding_ms)
     speech = CartesiaSpeechSession(api_key=s.cartesia_api_key, voice_id=s.cartesia_voice_id,
                                    model=s.cartesia_model, version=s.cartesia_version,
                                    voice_label=s.cartesia_voice_label, ttl_s=s.speech_token_ttl_s)
