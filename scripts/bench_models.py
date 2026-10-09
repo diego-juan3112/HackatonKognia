@@ -127,8 +127,10 @@ def rms(chunk: bytes) -> float:
     return math.sqrt(sum(x * x for x in a) / len(a)) if a else 0.0
 
 
-async def stream_mic(send, pcm: bytes, rate: int, rec: Turn, stop: asyncio.Event) -> None:
+async def stream_mic(send, pcm: bytes, rate: int, rec: Turn, stop: asyncio.Event, start_at: float = 0.0) -> None:
     """Send like a microphone: chunk k leaves when it has been 'captured' (start + (k+1)*20 ms)."""
+    if start_at > now():
+        await asyncio.sleep(start_at - now())  # the person starts talking a moment after connecting
     chunks = split_chunks(pcm, rate)
     voiced = [i for i, c in enumerate(chunks) if rms(c) >= VOICED_RMS]
     last_voiced = voiced[-1] if voiced else len(chunks) - 1
@@ -197,6 +199,10 @@ class Turn:
         failures = list(self.errors)
         if not self.tools:
             failures.append("no_tool: el modelo respondió sin llamar herramienta")
+        for t in self.tools:
+            if t.get("status") == "unavailable":
+                failures.append(f"tool {t['name']} status=unavailable error={t.get('error')} "
+                                f"(POST /tools {t['rt_ms']} ms; args {json.dumps(t['args'], ensure_ascii=False)})")
         if self.tools and not useful:
             failures.append("no_useful_audio: no llegó audio después del resultado de la herramienta")
         if self.t0 is None:
@@ -282,12 +288,14 @@ async def run_tool(http: httpx.AsyncClient, base: str, tok: str, name: str, call
 # ---------------------------------------------------------------------------
 
 
-async def turn_openai(http: httpx.AsyncClient, base: str, q: dict, pcm24: bytes, force_live: bool) -> Turn:
+async def turn_openai(http: httpx.AsyncClient, base: str, q: dict, pcm24: bytes, force_live: bool,
+                      pre_wait: float = 0.0) -> Turn:
     rec = Turn(q["id"], q["text"], "openai")
     tok = await new_session(http, base)
     t = now()
     rs = await mint(http, base, tok, "openai")
     rec.cred_ms = int((now() - t) * 1000)
+    minted = now()
     rec.model = rs.get("model", "")
     rec.vad = (rs.get("config") or {}).get("turn_detection")
     secrets = [rs["connect"].get("token") or ""]
@@ -348,7 +356,7 @@ async def turn_openai(http: httpx.AsyncClient, base: str, q: dict, pcm24: bytes,
                 et = ev.get("type", "")
                 tnow = now()
                 if et == "session.created" and mic is None:
-                    mic = asyncio.create_task(stream_mic(send_audio, pcm24, 24000, rec, stop))
+                    mic = asyncio.create_task(stream_mic(send_audio, pcm24, 24000, rec, stop, minted + pre_wait))
                 elif et == "input_audio_buffer.speech_stopped" and rec.a is None:
                     rec.a, rec.a_kind = tnow, "speech_stopped"
                     rec.vad_audio_end_ms = ev.get("audio_end_ms")
@@ -417,12 +425,14 @@ async def turn_openai(http: httpx.AsyncClient, base: str, q: dict, pcm24: bytes,
 # ---------------------------------------------------------------------------
 
 
-async def turn_gemini(http: httpx.AsyncClient, base: str, q: dict, pcm16: bytes, force_live: bool) -> Turn:
+async def turn_gemini(http: httpx.AsyncClient, base: str, q: dict, pcm16: bytes, force_live: bool,
+                      pre_wait: float = 0.0) -> Turn:
     rec = Turn(q["id"], q["text"], "gemini")
     tok = await new_session(http, base)
     t = now()
     rs = await mint(http, base, tok, "gemini")
     rec.cred_ms = int((now() - t) * 1000)
+    minted = now()
     rec.model = rs.get("model", "")
     rec.vad = (rs.get("config") or {}).get("turn_detection")
     secrets = [rs["connect"].get("token") or ""]
@@ -477,7 +487,7 @@ async def turn_gemini(http: httpx.AsyncClient, base: str, q: dict, pcm16: bytes,
                     sub = [k for k in sc] if sc else []
                     rec.a, rec.a_kind = tnow, "first_msg:" + "+".join(kinds + sub)
                 if "setupComplete" in msg and mic is None:
-                    mic = asyncio.create_task(stream_mic(send_audio, pcm16, 16000, rec, stop))
+                    mic = asyncio.create_task(stream_mic(send_audio, pcm16, 16000, rec, stop, minted + pre_wait))
                 if "toolCall" in msg:
                     if rec.b is None:
                         rec.b = tnow
@@ -628,7 +638,7 @@ def git_head() -> str:
 
 
 def report(label: str, engine: str, rows: list[dict[str, Any]], health: dict[str, Any],
-           env_over: dict[str, str], force_live: bool) -> str:
+           env_over: dict[str, str], force_live: bool, pre_wait: float = 0.0) -> str:
     model = rows[0]["model"] if rows else health.get("engines", {}).get(engine, {}).get("model", "?")
     ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     unavailable = sum(r["unavailable"] for r in rows)
@@ -640,7 +650,8 @@ def report(label: str, engine: str, rows: list[dict[str, Any]], health: dict[str
         f"- Commit: `{git_head()}` · prompt `{health.get('instructions_version')}` · "
         f"overrides: `{json.dumps(env_over) if env_over else 'ninguno'}`",
         f"- Turn detection: `{json.dumps(vad, ensure_ascii=False)}`",
-        f"- n = {len(rows)} preguntas, una sesión nueva por pregunta; force_live en la 1.ª consulta: {force_live}",
+        f"- n = {len(rows)} preguntas, una sesión nueva por pregunta; force_live en la 1.ª consulta: {force_live}; "
+        f"espera tras /realtime/session antes de hablar: {pre_wait} s",
         f"- (a) medido con: {', '.join(a_kind) or '—'}",
         f"- Herramientas `unavailable`: {unavailable}\n",
         summarize(rows), "",
@@ -694,9 +705,11 @@ async def main_async(args: argparse.Namespace) -> int:
                 for q in qs:
                     try:
                         if engine == "openai":
-                            rec = await turn_openai(http, base, q, audio24[q["id"]], not args.no_force_live)
+                            rec = await turn_openai(http, base, q, audio24[q["id"]], not args.no_force_live,
+                                                    args.pre_wait)
                         else:
-                            rec = await turn_gemini(http, base, q, audio16[q["id"]], not args.no_force_live)
+                            rec = await turn_gemini(http, base, q, audio16[q["id"]], not args.no_force_live,
+                                                    args.pre_wait)
                         row = rec.export()
                     except Exception as exc:  # noqa: BLE001 - reported verbatim (R-29)
                         row = Turn(q["id"], q["text"], engine).export()
@@ -706,7 +719,7 @@ async def main_async(args: argparse.Namespace) -> int:
                           f"c={row['c_tool_rt_ms']}/{row['c_trace_ms']} ack={row['ack_first']}({row['ack_audio_ms']}) "
                           f"d={row['d_first_useful']} fails={row['failures']}", flush=True)
                     await asyncio.sleep(args.pause)
-                md = report(args.label, engine, rows, health, env_over, not args.no_force_live)
+                md = report(args.label, engine, rows, health, env_over, not args.no_force_live, args.pre_wait)
                 print(md, flush=True)
                 if not args.no_write:
                     if not RESULTS.exists():
@@ -739,6 +752,8 @@ def main() -> int:
                    help="no forzar consulta en vivo en la 1.ª herramienta (el cliente web sí la fuerza)")
     p.add_argument("--no-write", action="store_true", help="no anexar al Markdown de resultados")
     p.add_argument("--pause", type=float, default=1.0)
+    p.add_argument("--pre-wait", type=float, default=0.0,
+                   help="segundos entre POST /realtime/session y el inicio de la voz (deja terminar la precarga)")
     args = p.parse_args()
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
