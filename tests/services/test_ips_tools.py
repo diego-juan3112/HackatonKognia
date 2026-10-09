@@ -22,6 +22,17 @@ def _req(args: dict, call_id: str = "c1", state_version: int = 0, **extra) -> To
                        context={"conversation_id": "conv", "turn_id": "t1", "state_version": state_version}, **extra)
 
 
+async def test_pipeline_lists_the_methods_that_served_the_call():  # admin board
+    ds = FakeDataset().on("count(DISTINCT", [{"value": "400"}])
+    env = await _svc(ds).run("aggregate_ips", _req({"metric": "provider_count",
+                                                    "filters": {"department": "Valle del Cauca"}}))
+    steps = " | ".join(env.pipeline)
+    assert env.pipeline[0].startswith("POST /api/tools/aggregate_ips")
+    assert "AggregateIpsArgs" in steps and "IpsToolService.aggregate_ips" in steps
+    assert "Lexicon.resolve_department('Valle del Cauca') → ok Valle del cauca" in steps
+    assert "SocrataClient.query" in steps and "1 filas" in steps and env.pipeline[-1].startswith("for_model.render")
+
+
 async def test_provider_count_counts_distinct_providers_not_rows():  # A-05
     ds = FakeDataset().on("count(DISTINCT c_digo_prestador)", [{"value": "9320"}])
     env = await _svc(ds).run("aggregate_ips", _req({"metric": "provider_count"}))
