@@ -17,6 +17,7 @@
  */
 import type { RealtimeSessionGrant } from "./api";
 import { base64ToPcm, openSocket, parseFrame, pcmToBase64, RealtimeEngineBase, type CancelInfo, type ProviderToolCall } from "./realtime-base";
+import { mayBeSpeech } from "./transcript-filter";
 import type { ContextEnvelope, StyleDecision } from "./types";
 
 type Msg = Record<string, unknown>;
@@ -201,14 +202,15 @@ export class GeminiLiveEngine extends RealtimeEngineBase {
   }
 
   private ensureGeneration(): string {
-    if (!this.generation) {
-      // The model is answering: the user's turn is over, even if no activity event said so.
-      this.stopUser();
-      this.generation = `gem-${crypto.randomUUID()}`;
-      this.serverTurnOpen = true;
-      this.generationStarted(this.generation);
-    }
-    return this.generation;
+    if (this.generation) return this.generation;
+    // The model is answering: the user's turn is over, even if no activity event said so.
+    this.stopUser();
+    const id = `gem-${crypto.randomUUID()}`;
+    this.generation = id;
+    this.serverTurnOpen = true;
+    // The core may drop it at once (the answer to a noise transcript): then `dropping` is set.
+    this.generationStarted(id);
+    return id;
   }
 
   private endGeneration(): void {
@@ -237,8 +239,9 @@ export class GeminiLiveEngine extends RealtimeEngineBase {
         const text = str(obj(content.inputTranscription).text);
         let key = this.userKey !== null && this.userUtteranceText(this.userKey) !== null ? this.userKey : null;
         // Fallback when no activity event announced the utterance. A fragment that trails an
-        // answer already in flight belongs to a closed utterance and is not a new turn.
-        if (text && key === null && this.generation === null && !this.serverTurnOpen) key = this.openUser();
+        // answer already in flight belongs to a closed utterance and is not a new turn, and a
+        // fragment with no Latin letter (noise turned into «公主») opens nothing.
+        if (text && key === null && this.generation === null && !this.serverTurnOpen && mayBeSpeech(text)) key = this.openUser();
         if (text && key !== null) {
           this.userTranscript(key, text, { final: false, append: true });
           if (this.userStopped) this.scheduleFinalize();
@@ -252,14 +255,14 @@ export class GeminiLiveEngine extends RealtimeEngineBase {
         this.providerInterrupted(id);
       }
 
-      if (!this.dropping) {
-        for (const part of arr(obj(content.modelTurn).parts)) {
-          const inline = obj(obj(part).inlineData);
-          if (typeof inline.data === "string" && inline.data) this.agentAudio(this.ensureGeneration(), base64ToPcm(inline.data));
-        }
-        const spoken = str(obj(content.outputTranscription).text);
-        if (spoken) this.agentTranscript(this.ensureGeneration(), spoken, { final: false, append: true });
+      // `dropping` is checked per part: starting a generation can set it (a dropped noise answer).
+      for (const part of arr(obj(content.modelTurn).parts)) {
+        const inline = obj(obj(part).inlineData);
+        if (this.dropping) break;
+        if (typeof inline.data === "string" && inline.data) this.agentAudio(this.ensureGeneration(), base64ToPcm(inline.data));
       }
+      const spoken = str(obj(content.outputTranscription).text);
+      if (spoken && !this.dropping) this.agentTranscript(this.ensureGeneration(), spoken, { final: false, append: true });
 
       if (content.generationComplete) this.endGeneration();
       if (content.turnComplete) {

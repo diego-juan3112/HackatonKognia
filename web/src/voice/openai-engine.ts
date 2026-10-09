@@ -192,6 +192,11 @@ export class OpenAIRealtimeEngine extends RealtimeEngineBase {
     else state.truncateAt = playedMs; // the item is still open: fix it when the response closes
   }
 
+  /** The user item was noise turned into text: it leaves the conversation so it does not steer later answers. */
+  protected override discardUserInput(key: string): void {
+    if (key) this.send({ type: "conversation.item.delete", item_id: key });
+  }
+
   private truncate(itemId: string, playedMs: number): void {
     this.send({ type: "conversation.item.truncate", item_id: itemId, content_index: 0, audio_end_ms: playedMs });
   }
