@@ -63,12 +63,18 @@ def seed_note(seed: ContextEnvelope | None) -> str:
 
 class RealtimeService:
     def __init__(self, engines: dict[str, RealtimeSessionPort], speech: SpeechSessionPort | None,
-                 *, instructions: str, instructions_version: str, speech_configured: bool) -> None:
+                 *, instructions: str, instructions_version: str, speech_configured: bool,
+                 default_voice_mode: str = "cloned") -> None:
         self._engines = engines
         self._speech = speech
         self._instructions = instructions
         self._version = instructions_version
         self._speech_ok = speech_configured
+        self._default_mode = default_voice_mode
+
+    def default_voice_mode(self) -> str:
+        """What the UI should select first: cloned only if synthesis is configured (D-20)."""
+        return "cloned" if self._speech_ok and self._default_mode == "cloned" else "engine"
 
     @property
     def instructions_version(self) -> str:

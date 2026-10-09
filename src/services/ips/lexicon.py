@@ -154,7 +154,20 @@ class Lexicon:
 
     def resolve_capacity_type(self, group: str, text: str) -> Resolution:
         by_norm = {norm(c["type"]): c["type"] for c in self._capacity if c["group"] == group and c.get("type")}
-        return self._resolve_in(text, by_norm)
+        res = self._resolve_in(text, by_norm)
+        if res.status == "ok":
+            return res
+        # Bench 2026-10-09: Gemini sent "camas de adultos" for CAMAS/Adultos. Drop the group
+        # word ("camas", "cama") and connectors before giving up.
+        g = norm(group)
+        words = [w for w in norm(text).split() if w not in {g, g.rstrip("s"), "de", "del", "para", "en"}]
+        stripped = " ".join(words)
+        if stripped and stripped != norm(text):
+            retry = self._resolve_in(stripped, by_norm)
+            if retry.status == "ok":
+                retry.warnings = list(dict.fromkeys(retry.warnings + ["FILTER_NORMALIZED"]))
+                return retry
+        return res
 
     # -- provider names ------------------------------------------------------
 

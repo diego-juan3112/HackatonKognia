@@ -36,6 +36,7 @@ class VoiceContainer:
     feedback: FeedbackPort
     dataset: DatasetPort
     info: dict[str, Any] = field(default_factory=dict)
+    ip_limiter: RateLimiter | None = None
     closers: list[Callable[[], Awaitable[None]]] = field(default_factory=list)
 
     async def aclose(self) -> None:
@@ -94,11 +95,12 @@ def build_container(s: Settings) -> VoiceContainer:
     return VoiceContainer(
         sessions=SessionService(s.session_signing_key, s.session_token_ttl_hours),
         limiter=RateLimiter(s.rate_limit_per_minute),
+        ip_limiter=RateLimiter(s.rate_limit_per_ip_minute),
         tools=IpsToolService(dataset, lexicon, dataset_id=s.dataset_id, source_url=source_url,
                              cursor_key=s.session_signing_key.encode(), deadline_s=s.tool_deadline_s),
         brief=BriefService(dataset, source_url=source_url, cutoff_raw=lexicon.cutoff_raw),
         realtime=RealtimeService(engines, speech, instructions=instructions, instructions_version=version,
-                                 speech_configured=speech.configured),
+                                 speech_configured=speech.configured, default_voice_mode=s.voice_default_mode),
         analyst=analyst,
         feedback=LogFeedback(),
         dataset=dataset,

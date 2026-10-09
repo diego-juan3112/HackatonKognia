@@ -124,9 +124,13 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
             claims = c.sessions.verify(request.headers.get("X-Session-Token"))
         except InvalidSession as exc:
             raise ApiError(401, "SESSION_EXPIRED", "Sesión inválida o vencida: pide una nueva con POST /sessions.") from exc
-        ip = request.client.host if request.client else "?"
-        for key in (f"sid:{claims.sid}", f"ip:{ip}"):
-            wait = c.limiter.check(key)
+        # Behind a proxy (Vercel) the client IP is the first X-Forwarded-For hop.
+        fwd = request.headers.get("x-forwarded-for", "")
+        ip = fwd.split(",")[0].strip() or (request.client.host if request.client else "?")
+        # Per session the normal limit; per IP a much higher one, because several evaluators
+        # on the same venue Wi-Fi share one public IP and must not throttle each other.
+        for key, limiter in ((f"sid:{claims.sid}", c.limiter), (f"ip:{ip}", c.ip_limiter or c.limiter)):
+            wait = limiter.check(key)
             if wait is not None:
                 raise ApiError(429, "RATE_LIMITED", "Demasiadas solicitudes.", True, {"Retry-After": str(int(wait))})
         return claims
@@ -154,6 +158,9 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
             "instructions_version": c.realtime.instructions_version,
             "engines": c.realtime.engines_status(),
             "voice_modes": c.realtime.voice_modes(),
+            # Additive (contract .2): the voice the UI selects first; cloned works with OpenAI only.
+            "default_voice_mode": c.realtime.default_voice_mode(),
+            "cloned_voice_engines": [n for n, e in c.realtime.engines_status().items() if e["supports_cloned"]],
             "source": source,
             **c.info,
         }
@@ -184,11 +191,11 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
         return brief
 
     @app.post("/tools/{name}")
-    async def run_tool(name: str, body: ToolRequest, _: SessionClaims = Depends(session),
+    async def run_tool(name: str, body: ToolRequest, claims: SessionClaims = Depends(session),
                        c: VoiceContainer = Depends(container)) -> dict[str, Any]:
         if name not in TOOL_NAMES:
             raise ApiError(404, "TOOL_UNKNOWN", f"Herramienta desconocida: {name}")
-        return (await c.tools.run(name, body)).model_dump()
+        return (await c.tools.run(name, body, scope=claims.sid)).model_dump()
 
     @app.post("/analysis/utterance")
     async def analysis(body: UtteranceAnalysisRequest, _: SessionClaims = Depends(session),

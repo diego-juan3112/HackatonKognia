@@ -49,6 +49,13 @@ async def test_capacity_sum_requires_group_and_warns_mixed_types():
     assert "nom_grupo_capacidad = 'CAMAS'" in ds.queries[-1]
 
 
+async def test_capacity_type_with_the_group_word_resolves():  # bench: Gemini said "camas de adultos"
+    ds = FakeDataset().on("sum(", [{"value": "3853"}])
+    env = await _svc(ds).run("aggregate_ips", _req({"metric": "capacity_sum", "filters": {
+        "capacity_group": "CAMAS", "capacity_type": "camas de adultos", "municipality": "Medellín"}}))
+    assert env.status == "ok" and "nom_descripcion_capacidad = 'Adultos'" in ds.queries[-1]
+
+
 async def test_municipality_group_uses_combined_key():
     rows = [{"municipio": "BOGOTÁ", "departamento": "Bogotá D.C", "value": "16193"}]
     ds = FakeDataset().on("GROUP BY municipio, departamento", rows)

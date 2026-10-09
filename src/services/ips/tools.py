@@ -93,7 +93,7 @@ class IpsToolService:
         self._source_url = source_url
         self._cursor_key = cursor_key
         self._deadline_s = deadline_s
-        self._done: OrderedDict[tuple[str, int], ToolEnvelope] = OrderedDict()
+        self._done: OrderedDict[tuple[str, str, int], ToolEnvelope] = OrderedDict()
         self._handlers: dict[str, Callable[..., Awaitable[ToolEnvelope]]] = {
             "search_ips": self._search_ips,
             "get_ips_details": self._get_ips_details,
@@ -135,8 +135,10 @@ class IpsToolService:
 
     # -- entry point ---------------------------------------------------------
 
-    async def run(self, name: str, req: ToolRequest) -> ToolEnvelope:
-        key = (req.tool_call_id, req.context.state_version)
+    async def run(self, name: str, req: ToolRequest, scope: str = "") -> ToolEnvelope:
+        # ``scope`` = the caller's session id: several evaluators at once must never share an
+        # idempotent result, even if their engines happen to produce the same tool_call_id.
+        key = (scope, req.tool_call_id, req.context.state_version)
         if key in self._done:  # docs/08 section 5.5: same call + same state -> same result
             return self._done[key]
         if name not in self._handlers:

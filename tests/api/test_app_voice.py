@@ -34,7 +34,7 @@ def _container(*, speech: bool = True, limit: int = 100) -> VoiceContainer:
     engines = {"openai": FakeRealtimeSession("openai", supports_text_only=True),
                "gemini": FakeRealtimeSession("gemini", supports_text_only=False)}
     return VoiceContainer(
-        sessions=SessionService("s" * 32), limiter=RateLimiter(limit),
+        sessions=SessionService("s" * 32), limiter=RateLimiter(limit), ip_limiter=RateLimiter(1000),
         tools=IpsToolService(ds, lex, dataset_id="s2ru-bqt6", source_url=url, cursor_key=b"k" * 32),
         brief=BriefService(ds, source_url=url, cutoff_raw=lex.cutoff_raw),
         realtime=RealtimeService(engines, FakeSpeechSession() if speech else None, instructions="Eres una IA.",
@@ -62,6 +62,7 @@ def test_health_is_public_and_announces_voice_modes(client):
     body = client.get("/health").json()
     assert body["status"] == "ok" and body["contract"] == "2026-10-09.2"
     assert body["voice_modes"] == ["engine", "cloned"] and set(body["engines"]) == {"openai", "gemini"}
+    assert body["default_voice_mode"] == "cloned" and body["cloned_voice_engines"] == ["openai"]
 
 
 def test_health_failure_is_not_cached_for_long():
@@ -134,7 +135,8 @@ def test_style_and_seed_reach_the_instructions(client):
 def test_speech_session_503_when_not_configured():
     c = _container(speech=False)
     with TestClient(create_app(lambda: c)) as tc:
-        assert tc.get("/health").json()["voice_modes"] == ["engine"]
+        health = tc.get("/health").json()
+        assert health["voice_modes"] == ["engine"] and health["default_voice_mode"] == "engine"
         r = tc.post("/speech/session", headers=_auth(tc), json={"conversation_id": "c"})
         assert r.status_code == 503 and r.json()["error"]["code"] == "SYNTH_UNAVAILABLE"
 
@@ -164,6 +166,26 @@ def test_verify_answer_checks_figures_against_the_turn_evidence(client):
 def test_feedback_is_accepted(client):
     r = client.post("/feedback", headers=_auth(client), json={"turn_id": "t1", "kind": "tone", "category": "TONE"})
     assert r.status_code == 202 and client.container.feedback.events[0].kind == "tone"  # type: ignore[attr-defined]
+
+
+def test_two_evaluators_never_share_a_tool_result(client):
+    """Same tool_call_id from two sessions: each gets its own result (multi-evaluator demo)."""
+    a, b = _auth(client), _auth(client)
+    body = {"tool_call_id": "call_1", "args": {"metric": "provider_count"}, "context": {"state_version": 0}}
+    ra = client.post("/tools/aggregate_ips", headers=a, json=body).json()
+    rb = client.post("/tools/aggregate_ips", headers=b, json={**body, "args": {
+        "metric": "provider_count", "filters": {"municipality": "Armenia"}}}).json()
+    assert ra["status"] == "ok" and rb["status"] == "ambiguous"  # B is not served A's cached envelope
+
+
+def test_same_ip_evaluators_are_limited_per_session():
+    c = _container(limit=2)
+    with TestClient(create_app(lambda: c)) as tc:
+        h1, h2 = _auth(tc), _auth(tc)
+        for _ in range(2):
+            assert tc.post("/feedback", headers=h1, json={"turn_id": "t", "kind": "repeat"}).status_code == 202
+        assert tc.post("/feedback", headers=h1, json={"turn_id": "t", "kind": "repeat"}).status_code == 429
+        assert tc.post("/feedback", headers=h2, json={"turn_id": "t", "kind": "repeat"}).status_code == 202
 
 
 def test_rate_limit_answers_429_with_retry_after():

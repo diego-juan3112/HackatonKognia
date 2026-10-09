@@ -89,7 +89,8 @@ class Settings(BaseSettings):
     # Comma-separated origins allowed by CORS (the web project).
     allowed_origins: str = "http://localhost:4321"
     # In-memory rate limit per session token and per IP (R-28).
-    rate_limit_per_minute: int = 120
+    rate_limit_per_minute: int = 120          # per anonymous session
+    rate_limit_per_ip_minute: int = 1500      # per IP: evaluators share the venue's public IP
 
     # -- Dataset (docs/09) --------------------------------------------------
     dataset_base_url: str = "https://www.datos.gov.co"
@@ -129,6 +130,9 @@ class Settings(BaseSettings):
     cartesia_model: str = "sonic-3.6"
     cartesia_version: str = "2026-08-14"
     cartesia_voice_label: str = "Voz clonada del equipo"
+    # Team decision 2026-10-09: the cloned voice is the default when it is configured
+    # (OpenAI only; Gemini Live rejects text-only output). "engine" turns it off.
+    voice_default_mode: str = "cloned"
     speech_token_ttl_s: int = 600
 
     # -- Analyst profiles (D-10, verified in G3) -----------------------------
