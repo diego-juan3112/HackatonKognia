@@ -99,6 +99,11 @@ export interface TranscriptPayload {
   speaker?: string;
   /** utterance_id this one corrects; the original is preserved. */
   corrects?: string;
+  /**
+   * The partial bubble of this utterance turned out to be noise (an invented
+   * transcript): remove it. Never final, so it is never analysed.
+   */
+  retracted?: boolean;
 }
 
 /** Tools the console knows by name. */

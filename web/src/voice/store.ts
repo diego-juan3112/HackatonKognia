@@ -261,6 +261,13 @@ const handlers: { [K in keyof EngineEvents]: (ev: Extract<AnyEngineEvent, { type
       if (original) original.correction = { text: p.text, reason: "Corregido por el usuario", t: p.t_end };
       return ["transcript"];
     }
+    if (p.retracted) {
+      // Noise the recognizer turned into text: its partial bubble goes away.
+      const i = state.utterances.findIndex((x) => x.id === p.utterance_id);
+      if (i < 0) return [];
+      state.utterances.splice(i, 1);
+      return ["transcript"];
+    }
     let u = state.utterances.find((x) => x.id === p.utterance_id);
     if (!u) {
       u = {
