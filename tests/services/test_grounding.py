@@ -92,6 +92,7 @@ def test_verifier_flags_invented_figures():
     assert ok["grounded"] and ok["numbers"] == [9320, 998]
     bad = verify("Hay 9.320 prestadores y unas 15.000 camas disponibles.", evidence)
     assert not bad["grounded"] and bad["unsupported"] == [15000]
+    assert "15.000" in bad["correction"] and "Corrígete" in bad["correction"] and ok["correction"] is None
 
 
 def test_number_parsing_handles_colombian_formats_and_ignores_small_numbers():

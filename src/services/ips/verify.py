@@ -58,5 +58,21 @@ def verify(text: str, evidence_data: Iterable[Any]) -> dict[str, Any]:
     for d in evidence_data:
         known |= numbers_in_evidence(d)
     unsupported = [n for n in said if float(n) not in known]
+    correction = None
+    if unsupported:
+        # Self-correction within the conversation (docs/10 section 5, "Recuperar no es aprender"):
+        # the browser hands this note to the engine, which corrects itself on the next turn.
+        listed = ", ".join(_fmt(n) for n in unsupported)
+        correction = (
+            "[Nota del sistema — verificación de cifras; no es una pregunta de la persona] "
+            f"En tu última respuesta dijiste {listed}, que no aparece en los resultados de herramientas de este turno. "
+            "Corrígete ahora en una frase, con sencillez: da la cifra exacta del resultado o di que ese dato no lo "
+            "tienes. No repitas la cifra no verificada."
+        )
     return {"grounded": not unsupported, "numbers": said, "unsupported": unsupported,
-            "checked": len(said), "note": "Los números escritos en palabras no se verifican."}
+            "checked": len(said), "correction": correction,
+            "note": "Los números escritos en palabras no se verifican."}
+
+
+def _fmt(n: int | float) -> str:
+    return f"{n:,}".replace(",", ".") if isinstance(n, int) else str(n).replace(".", ",")
