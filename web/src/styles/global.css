@@ -16,6 +16,7 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow-x: clip;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-body);
@@ -85,16 +86,18 @@ svg.lucide {
 }
 
 :focus-visible {
-  outline: 2.5px solid var(--primary);
+  outline: 2.5px solid var(--accent-bright);
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
 
 ::selection {
-  background: var(--primary);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-dark);
 }
 
+/* `position: absolute` needs a positioned ancestor inside scrolling lists
+   (bubbles, transcript rows), or it stretches the document. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -109,9 +112,12 @@ svg.lucide {
   left: var(--s-4);
   top: -4rem;
   z-index: 50;
-  padding: var(--s-2) var(--s-4);
-  background: var(--primary);
-  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 var(--s-4);
+  background: var(--primary-ink);
+  color: var(--on-dark);
   border-radius: var(--r-sm);
   font-weight: 600;
 }
@@ -132,7 +138,7 @@ svg.lucide {
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--r-xl);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-card);
 }
 
@@ -143,7 +149,7 @@ svg.lucide {
   align-items: center;
   justify-content: center;
   gap: var(--s-2);
-  min-height: 2.5rem;
+  min-height: var(--tap);
   padding: 0 var(--s-4);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-pill);
@@ -157,13 +163,12 @@ svg.lucide {
     background-color 0.15s,
     border-color 0.15s,
     color 0.15s,
-    box-shadow 0.15s,
     transform 0.15s var(--ease);
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--subtle);
-  border-color: var(--ink-3);
+  background: var(--subtle-2);
+  border-color: var(--blue-500);
 }
 
 .btn:active:not(:disabled) {
@@ -171,61 +176,58 @@ svg.lucide {
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
 .btn[aria-pressed="true"] {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-  color: var(--primary-ink);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .btn-primary,
-.btn-green {
-  min-height: 3rem;
+.btn-talk {
+  min-height: 3.25rem;
   padding: 0 var(--s-5);
   border: 0;
-  color: #fff;
+  color: var(--on-dark);
   font-size: var(--t-base);
   font-weight: 650;
 }
 
 .btn-primary {
   background: var(--primary);
-  box-shadow: 0 8px 20px -10px var(--primary);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-ink);
 }
 
-.btn-green {
-  background: var(--green);
-  box-shadow: 0 8px 20px -10px var(--green);
+/* The one loud control of the product: start talking. */
+.btn-talk {
+  background: var(--accent);
+  box-shadow: 0 10px 22px -12px var(--accent);
 }
 
-.btn-green:hover:not(:disabled) {
-  background: var(--green-ink);
+/* Hover never overrides the running («Detener») state. */
+.btn-talk:not([data-running="true"]):hover:not(:disabled) {
+  background: var(--accent-ink);
 }
 
-.btn-green[data-running="true"] {
-  background: var(--ink);
+.btn-talk[data-running="true"],
+.btn-talk[data-running="true"]:hover:not(:disabled) {
+  background: var(--primary-ink);
   box-shadow: none;
 }
 
-.btn-sm {
-  min-height: 2rem;
-  padding: 0 var(--s-3);
-  font-size: var(--t-xs);
-}
-
-/* ── Tags ────────────────────────────────────────────────────────────────── */
+/* ── Tags: told apart by shape as well as tone ───────────────────────────── */
 
 .tag {
   display: inline-flex;
   align-items: center;
-  gap: 0.35em;
-  padding: 0.1em 0.6em;
+  gap: 0.4em;
+  padding: 0.1em 0.65em;
+  border: 1px solid transparent;
   border-radius: var(--r-pill);
   font-size: var(--t-xs);
   font-weight: 650;
@@ -235,20 +237,45 @@ svg.lucide {
   color: var(--ink-2);
 }
 
-.tag-live { background: var(--green-soft); color: var(--green-ink); }
-.tag-fresh { background: var(--sky-soft); color: var(--sky-ink); }
-.tag-stale { background: var(--amber-soft); color: var(--amber-ink); }
-.tag-bad { background: var(--red-soft); color: var(--red-ink); }
+.tag-live { background: var(--accent-soft); color: var(--accent-ink); }
+.tag-fresh { background: var(--primary-soft); color: var(--primary-ink); }
+.tag-stale { background: var(--card); border-color: var(--blue-500); border-style: dashed; color: var(--primary-ink); }
+.tag-bad { background: var(--danger-soft); color: var(--danger); }
 .tag-quiet { background: var(--subtle-2); color: var(--ink-2); }
-.tag-warn { background: var(--amber-soft); color: var(--amber-ink); }
-.tag-violet { background: var(--violet-soft); color: var(--violet-ink); }
+.tag-note { background: var(--card); border-color: var(--border-strong); color: var(--ink-2); }
+.tag-accent { background: var(--accent-soft); color: var(--accent-ink); }
 
-.tag-live::before {
+/* live = filled dot, fresh = hollow dot, stale = dashed outline */
+.tag-live::before,
+.tag-fresh::before {
   content: "";
   width: 0.5em;
   height: 0.5em;
   border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+
+.tag-live::before {
   background: currentColor;
+}
+
+/* ── Native select ───────────────────────────────────────────────────────── */
+
+.select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 var(--s-6) 0 var(--s-3);
+  border: 1px solid var(--border-field);
+  border-radius: var(--r-md);
+  background: var(--card) var(--chevron) no-repeat right 0.7rem center;
+  appearance: none;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.select:hover {
+  border-color: var(--blue-500);
 }
 
 /* ── View transitions ────────────────────────────────────────────────────── */

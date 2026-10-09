@@ -1,331 +1,95 @@
 ---
-import Activity from "@lucide/astro/icons/activity";
-import Bot from "@lucide/astro/icons/bot";
-import Database from "@lucide/astro/icons/database";
-import MessageSquare from "@lucide/astro/icons/message-square";
-import Settings from "@lucide/astro/icons/settings";
+/**
+ * Conversation screen: talk to the agent and read the conversation. That is all.
+ * Everything technical (queries, timings, emotions, engine) is on /admin, which
+ * reads the same store.
+ */
 import Base from "../layouts/Base.astro";
-import AffectPanel from "../components/AffectPanel.astro";
-import ApiPanel from "../components/ApiPanel.astro";
 import AvatarStage from "../components/AvatarStage.astro";
 import Chat from "../components/Chat.astro";
-import ConsentDialog from "../components/ConsentDialog.astro";
-import HelpPanel from "../components/HelpPanel.astro";
 import IconBank from "../components/IconBank.astro";
-import LatencyHud from "../components/LatencyHud.astro";
-
-const tabs = [
-  { id: "conversacion", label: "Conversación", Icon: MessageSquare },
-  { id: "api", label: "API en vivo", Icon: Database },
-  { id: "analisis", label: "Análisis", Icon: Activity },
-  { id: "ayuda", label: "Ayuda", Icon: Settings },
-];
 ---
 
-<Base
-  title="Consola · Asistente IPS en Vivo"
-  description="Conversación por voz con el registro de IPS: chat en vivo, consultas a datos.gov.co, afecto y latencia."
-  fill
->
-  <h1 class="sr-only">Consola de conversación</h1>
+<Base title="Conversación · IPS en Vivo" description="Habla con el registro de IPS de Colombia (REPS) y lee la conversación." fill>
+  <h1 class="sr-only">Conversación</h1>
   <div class="console" id="console">
     <AvatarStage />
-
-    <section class="card panel-card" aria-label="Conversación y paneles">
-      <header class="chat-head">
-        <span class="mini" aria-hidden="true"><Bot /></span>
-        <div class="who">
-          <p class="name">Asistente IPS <span class="tag tag-quiet">IA</span></p>
-          <p class="src"><span class="dot" aria-hidden="true"></span> Datos del REPS · corte 5-nov-2022</p>
-        </div>
-        <div class="tabs" role="tablist" aria-label="Paneles">
-          {
-            tabs.map((t, i) => (
-              <button
-                type="button"
-                role="tab"
-                id={`tab-${t.id}`}
-                data-tab={t.id}
-                aria-controls={`pane-${t.id}`}
-                aria-selected={i === 0 ? "true" : "false"}
-                tabindex={i === 0 ? 0 : -1}
-              >
-                <t.Icon aria-hidden="true" />
-                <span>{t.label}</span>
-                {t.id === "api" && <b class="count" id="api-count" hidden />}
-              </button>
-            ))
-          }
-        </div>
-      </header>
-
-      <div class="pane pane-chat" id="pane-conversacion" role="tabpanel" aria-labelledby="tab-conversacion">
-        <Chat />
-      </div>
-      <div class="pane pane-scroll" id="pane-api" role="tabpanel" aria-labelledby="tab-api" tabindex="0" hidden>
-        <ApiPanel />
-      </div>
-      <div class="pane pane-scroll" id="pane-analisis" role="tabpanel" aria-labelledby="tab-analisis" tabindex="0" hidden>
-        <AffectPanel />
-        <LatencyHud />
-      </div>
-      <div class="pane pane-scroll" id="pane-ayuda" role="tabpanel" aria-labelledby="tab-ayuda" tabindex="0" hidden>
-        <HelpPanel />
-      </div>
-    </section>
+    <Chat />
   </div>
-  <ConsentDialog />
   <IconBank />
 </Base>
 
 <script>
-  import { bind, byId, panel } from "../scripts/dom";
+  import { panel } from "../scripts/dom";
   import * as controller from "../voice/controller";
 
-  const TABS = ["conversacion", "api", "analisis", "ayuda"];
-
-  panel("console", (root) => {
-    const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-
-    const show = (id: string, focus = false): void => {
-      const tab = TABS.includes(id) ? id : "conversacion";
-      for (const b of buttons) {
-        const on = b.dataset.tab === tab;
-        b.setAttribute("aria-selected", String(on));
-        b.tabIndex = on ? 0 : -1;
-        if (on && focus) b.focus();
-      }
-      for (const t of TABS) {
-        const pane = byId(`pane-${t}`);
-        if (pane) pane.hidden = t !== tab;
-      }
-      for (const a of document.querySelectorAll<HTMLAnchorElement>("[data-tab-link]")) {
-        if (a.dataset.tabLink === tab) a.setAttribute("aria-current", "page");
-        else a.removeAttribute("aria-current");
-      }
-      const url = new URL(location.href);
-      url.hash = tab === "conversacion" ? "" : tab;
-      history.replaceState(history.state, "", url);
-    };
-
-    for (const b of buttons) {
-      b.addEventListener("click", () => show(b.dataset.tab ?? ""));
-      b.addEventListener("keydown", (e) => {
-        const i = buttons.indexOf(b);
-        const moves: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: buttons.length - 1 };
-        const next = moves[e.key];
-        if (next === undefined) return;
-        e.preventDefault();
-        show(buttons[(next + buttons.length) % buttons.length]?.dataset.tab ?? "", true);
-      });
-    }
-
-    // Header links to a tab: when already here, switch in place instead of navigating.
-    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("[data-tab-link]"));
-    const onLink = (e: MouseEvent): void => {
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-      e.preventDefault();
-      show((e.currentTarget as HTMLAnchorElement).dataset.tabLink ?? "");
-    };
-    for (const a of links) a.addEventListener("click", onLink);
-
-    // «Reconsultar» lives both in the chat cards and in the API tab.
-    root.addEventListener("click", (e) => {
-      const id = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-requery]")?.dataset.requery;
-      if (id) void controller.requery(id);
-    });
-
-    const unbind = bind(["tools"], (s) => {
-      const count = byId("api-count");
-      if (!count) return;
-      count.hidden = s.tools.length === 0;
-      count.textContent = String(s.tools.length);
-    });
-
+  panel("console", () => {
     // The cover page links here with ?iniciar=1 or ?q=…; consume them once.
     const url = new URL(location.href);
     const q = url.searchParams.get("q");
     const autostart = url.searchParams.has("iniciar");
-    show(location.hash.slice(1));
-    if (q || autostart) {
-      url.searchParams.delete("q");
-      url.searchParams.delete("iniciar");
-      history.replaceState(history.state, "", url);
-      if (q) controller.sendText(q);
-      else void controller.start();
-    }
-
-    return () => {
-      unbind();
-      for (const a of links) a.removeEventListener("click", onLink);
-    };
+    if (!q && !autostart) return;
+    url.searchParams.delete("q");
+    url.searchParams.delete("iniciar");
+    history.replaceState(history.state, "", url);
+    if (q) controller.sendText(q);
+    else void controller.start();
   });
 </script>
 
 <style>
+  /* Phone and upright tablet: compact avatar on top, chat below, composer at the bottom edge. */
   .console {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--s-4);
+    grid-template-rows: clamp(150px, 30dvh, 280px) minmax(0, 1fr);
+    gap: var(--s-3);
     flex: 1;
     min-height: 0;
-    padding: var(--s-4) clamp(var(--s-3), 2vw, var(--s-5));
+    padding: var(--s-3) var(--s-3) 0;
   }
 
-  .panel-card {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    min-width: 0;
-    overflow: hidden;
+  .console :global(.chat) {
+    border-bottom: 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
   }
 
-  .chat-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-2) var(--s-3);
-    padding: var(--s-3) var(--s-4);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .mini {
-    display: grid;
-    place-items: center;
-    width: 2.6rem;
-    height: 2.6rem;
-    flex: none;
-    border-radius: 50%;
-    background: linear-gradient(140deg, var(--primary), var(--violet));
-    color: #fff;
-    font-size: 1.2rem;
-  }
-
-  .who {
-    margin-right: auto;
-    line-height: 1.25;
-  }
-
-  .name {
-    display: flex;
-    align-items: center;
-    gap: var(--s-2);
-    font-family: var(--font-display);
-    font-weight: 700;
-  }
-
-  .src {
-    display: flex;
-    align-items: center;
-    gap: var(--s-2);
-    color: var(--ink-3);
-    font-size: var(--t-xs);
-    font-weight: 550;
-  }
-
-  .dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    background: var(--state);
-    transition: background-color 0.3s;
-  }
-
-  .tabs {
-    display: flex;
-    gap: 2px;
-    padding: 3px;
-    border-radius: var(--r-pill);
-    background: var(--subtle-2);
-  }
-
-  .tabs button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.75rem;
-    border: 0;
-    border-radius: var(--r-pill);
-    background: transparent;
-    color: var(--ink-2);
-    font-size: var(--t-sm);
-    font-weight: 600;
-    white-space: nowrap;
-    transition:
-      background-color 0.15s,
-      color 0.15s;
-  }
-
-  .tabs button:hover {
-    color: var(--ink);
-  }
-
-  .tabs button[aria-selected="true"] {
-    background: var(--card);
-    color: var(--primary-ink);
-    box-shadow: 0 1px 3px rgb(15 27 51 / 0.14);
-  }
-
-  .count {
-    min-width: 1.25rem;
-    padding: 0 0.3rem;
-    border-radius: var(--r-pill);
-    background: var(--primary);
-    color: #fff;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    line-height: 1.25rem;
-    text-align: center;
-  }
-
-  .pane {
-    flex: 1;
-    min-height: 0;
-  }
-
-  .pane-chat {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .pane-scroll {
-    overflow-y: auto;
-    padding: var(--s-4) var(--s-5) var(--s-5);
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
-  }
-
-  @media (max-width: 1320px) {
-    .tabs button span {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-    }
-
-    .tabs button[aria-selected="true"] span {
-      position: static;
-      width: auto;
-      height: auto;
-      clip-path: none;
+  @media (min-width: 768px) {
+    .console {
+      grid-template-rows: clamp(260px, 40dvh, 520px) minmax(0, 1fr);
+      gap: var(--s-4);
+      padding: var(--s-4) var(--gutter) 0;
     }
   }
 
+  /* Landscape tablet and desktop: avatar and chat side by side. */
   @media (min-width: 1024px) {
     .console {
-      grid-template-columns: minmax(0, 48fr) minmax(0, 52fr);
+      grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+      grid-template-rows: minmax(0, 1fr);
+      gap: var(--s-5);
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+      padding: var(--s-5) var(--gutter);
+    }
+
+    .console :global(.chat) {
+      border-bottom: 1px solid var(--border);
+      border-radius: var(--r-lg);
     }
   }
 
-  /* When the page scrolls instead of the cards, give the scrolling areas a cap. */
-  @media (max-width: 1023px), (max-height: 639px) {
-    .console :global(.chat-scroll) {
-      max-height: 65vh;
+  /* Phone on its side: the page scrolls, so give each part a real height. */
+  @media (max-height: 479px) {
+    .console {
+      grid-template-rows: 70dvh 90dvh;
     }
+  }
 
-    .console :global(#avatar-stage) {
-      min-height: 46vh;
+  @media (max-height: 479px) and (min-width: 1024px) {
+    .console {
+      grid-template-rows: 100dvh;
     }
   }
 </style>

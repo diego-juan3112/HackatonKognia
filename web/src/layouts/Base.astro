@@ -10,7 +10,7 @@ import SiteFooter from "../components/SiteFooter.astro";
 interface Props {
   title: string;
   description: string;
-  /** The console fills the viewport and scrolls inside its cards. */
+  /** The conversation screen fills the viewport and scrolls inside the chat. */
   fill?: boolean;
 }
 
@@ -21,9 +21,9 @@ const { title, description, fill = false } = Astro.props;
 <html lang="es-CO" data-status="idle">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#f3f8fd" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
     <ClientRouter />
@@ -42,6 +42,7 @@ const { title, description, fill = false } = Astro.props;
     </main>
     <SiteFooter />
     <script>
+      import { keepAnalysisDefault } from "../scripts/analysis";
       import { getState, subscribe } from "../voice/store";
 
       declare global {
@@ -60,6 +61,7 @@ const { title, description, fill = false } = Astro.props;
         if (slices.has("status") || slices.has("reset")) sync();
       });
       sync();
+      keepAnalysisDefault();
     </script>
   </body>
 </html>
@@ -70,7 +72,9 @@ const { title, description, fill = false } = Astro.props;
     min-width: 0;
   }
 
-  @media (min-width: 1024px) and (min-height: 640px) {
+  /* Fill mode: one screen tall on every device, so the composer stays at the
+     bottom edge. Very short viewports (a phone on its side) scroll instead. */
+  @media (min-height: 480px) {
     body.fill {
       height: 100dvh;
       overflow: hidden;
@@ -80,6 +84,16 @@ const { title, description, fill = false } = Astro.props;
       min-height: 0;
       display: flex;
       flex-direction: column;
+    }
+  }
+
+  body.fill :global(.site-footer) {
+    display: none;
+  }
+
+  @media (min-width: 1024px) and (min-height: 700px) {
+    body.fill :global(.site-footer) {
+      display: flex;
     }
   }
 </style>

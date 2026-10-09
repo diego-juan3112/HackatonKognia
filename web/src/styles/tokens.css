@@ -1,61 +1,96 @@
 /*
- * Design tokens. Light theme: white cards on a very light blue-grey page,
- * a blue primary, green for the microphone, generous radii and soft shadows.
+ * Design tokens. Two hues only: the «Holst» blues and a harmonic violet accent.
+ * State and emphasis are told apart by value (light/dark), shape and icon, never
+ * by a traffic-light hue. The single red is reserved for real errors.
+ *
+ * Every colour used anywhere in src/ is defined here.
  */
 :root {
   color-scheme: light;
 
-  /* Surfaces */
-  --bg: #eef2f8;
-  --card: #ffffff;
-  --subtle: #f4f6fb;
-  --subtle-2: #e9eef6;
-  --border: #e3e8f1;
-  --border-strong: #cbd4e3;
+  /* ── Blue scale («Holst») ─────────────────────────────────────────────── */
+  --blue-950: #182b47; /* derived: ink */
+  --blue-900: #223a5e;
+  --blue-700: #355982;
+  --blue-600: #426c99; /* derived: quiet text that still passes AA on --blue-50 */
+  --blue-500: #4d79a8;
+  --blue-400: #6e9ecc;
+  --blue-300: #9fc0e3;
+  --blue-100: #d0e1f2;
+  --blue-75: #e4eef8; /* derived: between 100 and 50 */
+  --blue-50: #f3f8fd;
 
-  /* Ink */
-  --ink: #0f1b33;
-  --ink-2: #44506a;
-  --ink-3: #6b7790;
+  /* ── Violet scale (accent) ────────────────────────────────────────────── */
+  --violet-900: #3b3391; /* derived: violet ink */
+  --violet-700: #5b4fc4;
+  --violet-500: #7c6cf0;
+  --violet-300: #b9b0fa;
+  --violet-100: #ece9fe;
 
-  /* Accents: fill, readable ink, soft background */
-  --primary: #2563eb;
-  --primary-ink: #1d4ed8;
-  --primary-soft: #e3edff;
-  --green: #16a34a;
-  --green-ink: #12803b;
-  --green-soft: #dcf5e5;
-  --amber: #f59e0b;
-  --amber-ink: #9a5b00;
-  --amber-soft: #fff1d6;
-  --violet: #7c5cf5;
-  --violet-ink: #5b3fd6;
-  --violet-soft: #ece7ff;
-  --sky: #0ea5e9;
-  --sky-ink: #0b6fa3;
-  --sky-soft: #def3fd;
-  --red: #e5484d;
-  --red-ink: #c22b31;
-  --red-soft: #fde5e6;
+  /* ── The only non-palette colours ─────────────────────────────────────── */
+  --white: #ffffff;
+  --red-700: #a8323e; /* real errors only */
+  --red-100: #fbecee;
+
+  /* ── Roles ────────────────────────────────────────────────────────────── */
+  --bg: var(--blue-50);
+  --card: var(--white);
+  --subtle: var(--blue-50);
+  --subtle-2: var(--blue-75);
+  --border: var(--blue-100);
+  --border-strong: var(--blue-300);
+  --border-field: var(--blue-500); /* inputs and selects: 4.5:1 against white */
+
+  --ink: var(--blue-950);
+  --ink-2: var(--blue-700);
+  --ink-3: var(--blue-600);
+  --on-dark: var(--white);
+  --on-dark-2: var(--blue-100);
+
+  --primary: var(--blue-700);
+  --primary-ink: var(--blue-900);
+  --primary-soft: var(--blue-100);
+  --accent: var(--violet-700);
+  --accent-ink: var(--violet-900);
+  --accent-bright: var(--violet-500);
+  --accent-soft: var(--violet-100);
+  --danger: var(--red-700);
+  --danger-soft: var(--red-100);
+
+  /* Code block (SoQL) */
+  --code-bg: var(--blue-900);
+  --code-ink: var(--blue-75);
+  --code-kw: var(--blue-300);
+  --code-fn: var(--violet-300);
+  --code-str: var(--white);
+
+  /* Translucent layers, derived from the scale */
+  --glass: color-mix(in srgb, var(--white) 90%, transparent);
+  --scrim: color-mix(in srgb, var(--blue-950) 86%, transparent);
+  --stage-top: var(--blue-75);
+  --stage-bottom: var(--violet-100);
+  --stage-floor: color-mix(in srgb, var(--blue-500) 22%, transparent);
+
+  /* Chevron of native selects (stroke = --blue-700) */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23355982' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* Live state colour: follows the engine status (set on <html data-status>) */
-  --state: var(--green);
-  --state-ink: var(--green-ink);
-  --state-soft: var(--green-soft);
+  --state: var(--blue-500);
+  --state-ink: var(--blue-700);
+  --state-soft: var(--blue-75);
 
   /* Type */
   --font-display: "Bricolage Grotesque Variable", "Segoe UI", system-ui, sans-serif;
   --font-body: "Instrument Sans Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
 
-  /* Scale: 1.25 on a 16px base */
   --t-xs: 0.75rem;
-  --t-sm: 0.8125rem;
+  --t-sm: 0.875rem;
   --t-base: 1rem;
   --t-md: 1.125rem;
-  --t-lg: 1.5625rem;
-  --t-xl: 2.4375rem;
-  --t-2xl: clamp(2.6rem, 1.2rem + 4.6vw, 4.75rem);
+  --t-lg: 1.5rem;
+  --t-xl: clamp(1.75rem, 1.3rem + 1.6vw, 2.4rem);
+  --t-2xl: clamp(2.25rem, 1.1rem + 5vw, 4.5rem);
 
   /* Space and shape */
   --s-1: 0.25rem;
@@ -66,22 +101,27 @@
   --s-6: 2rem;
   --s-7: 3rem;
   --s-8: 4.5rem;
+  --gutter: clamp(1rem, 3.2vw, 2.5rem);
+  --tap: 2.75rem; /* 44px minimum touch target */
   --r-sm: 8px;
   --r-md: 14px;
   --r-lg: 22px;
-  --r-xl: 28px;
   --r-pill: 999px;
 
-  --shadow-card: 0 1px 2px rgb(15 27 51 / 0.04), 0 12px 32px -12px rgb(15 27 51 / 0.12);
-  --shadow-float: 0 2px 6px rgb(15 27 51 / 0.08), 0 10px 24px -8px rgb(15 27 51 / 0.18);
+  --shadow-card: 0 1px 2px color-mix(in srgb, var(--blue-900) 5%, transparent),
+    0 14px 32px -16px color-mix(in srgb, var(--blue-900) 18%, transparent);
+  --shadow-float: 0 2px 6px color-mix(in srgb, var(--blue-900) 10%, transparent),
+    0 10px 24px -10px color-mix(in srgb, var(--blue-900) 24%, transparent);
 
   --ease: cubic-bezier(0.22, 0.8, 0.26, 1);
 }
 
-:root[data-status="idle"] { --state: var(--green); --state-ink: var(--green-ink); --state-soft: var(--green-soft); }
-:root[data-status="connecting"] { --state: var(--sky); --state-ink: var(--sky-ink); --state-soft: var(--sky-soft); }
-:root[data-status="listening"] { --state: var(--green); --state-ink: var(--green-ink); --state-soft: var(--green-soft); }
-:root[data-status="thinking"] { --state: var(--amber); --state-ink: var(--amber-ink); --state-soft: var(--amber-soft); }
-:root[data-status="speaking"] { --state: var(--primary); --state-ink: var(--primary-ink); --state-soft: var(--primary-soft); }
-:root[data-status="renewing"] { --state: var(--violet); --state-ink: var(--violet-ink); --state-soft: var(--violet-soft); }
-:root[data-status="error"] { --state: var(--red); --state-ink: var(--red-ink); --state-soft: var(--red-soft); }
+/* Blue = the agent's side (ready, connecting, speaking). Violet = the person's
+   side and work in progress (listening, looking up, renewing). */
+:root[data-status="idle"] { --state: var(--blue-500); --state-ink: var(--blue-700); --state-soft: var(--blue-75); }
+:root[data-status="connecting"] { --state: var(--blue-400); --state-ink: var(--blue-700); --state-soft: var(--blue-75); }
+:root[data-status="listening"] { --state: var(--violet-500); --state-ink: var(--violet-700); --state-soft: var(--violet-100); }
+:root[data-status="thinking"] { --state: var(--violet-300); --state-ink: var(--violet-900); --state-soft: var(--violet-100); }
+:root[data-status="speaking"] { --state: var(--blue-700); --state-ink: var(--blue-900); --state-soft: var(--blue-100); }
+:root[data-status="renewing"] { --state: var(--violet-700); --state-ink: var(--violet-900); --state-soft: var(--violet-100); }
+:root[data-status="error"] { --state: var(--red-700); --state-ink: var(--red-700); --state-soft: var(--red-100); }

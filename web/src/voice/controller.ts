@@ -7,7 +7,8 @@
  * analyst calls, style decisions and the user controls.
  */
 import { analyze, DIRECTIVES, inferStyle } from "./analyst";
-import { fetchBrief, runTool, type ToolContext } from "./api";
+import { fetchBrief, fetchVoiceModes, runTool, type ToolContext } from "./api";
+import { getMicTap } from "./audio/mic-tap";
 import { createEngine, engineInfo, engineLabel, otherEngine } from "./engine-factory";
 import type { EngineDeps } from "./fake-engine";
 import * as store from "./store";
@@ -46,7 +47,71 @@ let localSeq = 0;
 let firstQuery = true;
 let attemptsThisTurn = 1;
 let pendingQuestion: string | null = null;
+/** Question shown at once while the engine is still busy with the brief. */
+let pendingEcho: { id: string; text: string; shown: boolean } | null = null;
+
+/** Shows the early question once the greeting is on screen, so the order reads brief → question. */
+function showEcho(): void {
+  if (!pendingEcho || pendingEcho.shown) return;
+  pendingEcho.shown = true;
+  const t = now();
+  localEvent("transcript", { role: "user", utterance_id: pendingEcho.id, text: pendingEcho.text, final: true, t_start: t, t_end: t, t_source: "local" });
+}
+
+const foldText = (s: string): string =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+/** «Sé más directo», spoken or typed: an explicit preference, applied at once (docs/10 §6, A-14). */
+const ASKS_DIRECT =
+  /\b(se|sea|seas|responde|respondeme|contesta|contestame|habla|hablame)\b[^.?!]*\b(direct[oa]s?|breves?|concis[oa]s?|cort[oa]s?)\b|\bmas (direct[oa]|breve|cort[oa]|concis[oa])\b|\bal grano\b|\bsin rodeos\b/;
+
+function preferDirectIfAsked(text: string): void {
+  if (!ASKS_DIRECT.test(foldText(text))) return;
+  const s = store.getState();
+  if (s.style.source === "preference" && s.style.style === "directo") return;
+  const decision: StyleDecision = {
+    style: "directo",
+    directives: DIRECTIVES.directo,
+    reason: "Lo pediste: una o dos frases, con la cifra primero.",
+    source: "preference",
+    applies_from_turn: s.turns.length + 1,
+  };
+  store.setStyle(decision);
+  engine?.applyStyle(decision);
+}
 const toolCache = new Map<string, Promise<EvidenceEnvelope>>();
+/** Canonical state kept by the browser between tool calls (docs/10 §4). */
+let confirmedFilters: Record<string, unknown> = {};
+let selectedSiteKeys: string[] = [];
+
+/** The full canonical context the backend needs: it keeps no state of its own. */
+function canonicalContext(ctx: ToolContext): ToolContext {
+  const s = store.getState();
+  return {
+    ...ctx,
+    locale: "es-CO",
+    confirmed_filters: confirmedFilters,
+    selected_site_keys: selectedSiteKeys,
+    tone_preference: tonePreference(),
+    last_evidence_refs: s.tools.filter((t) => t.status === "ok" && !t.invalidated && t.evidence_ref).slice(-5).map((t) => t.evidence_ref),
+  };
+}
+
+function tonePreference(): "concise" | "neutral" {
+  const s = store.getState();
+  return s.style.source === "preference" && s.style.style === "directo" ? "concise" : "neutral";
+}
+
+function applyPatch(env: EvidenceEnvelope): void {
+  if (env.status !== "ok") return;
+  const patch = env.context_patch ?? {};
+  if (patch.confirmed_filters && typeof patch.confirmed_filters === "object") confirmedFilters = patch.confirmed_filters;
+  else if (Object.keys(env.evidence.filters ?? {}).length > 0) confirmedFilters = env.evidence.filters;
+  if (Array.isArray(patch.selected_site_keys)) selectedSiteKeys = patch.selected_site_keys.filter((k): k is string => typeof k === "string");
+}
 
 const now = (): number => Math.round(performance.now() - sessionStart);
 
@@ -62,8 +127,9 @@ const deps: EngineDeps = {
     if (cached) return cached;
     const forceLive = firstQuery;
     firstQuery = false;
-    const result = runTool(call, ctx, { forceLive }).then((env) => {
+    const result = runTool(call, canonicalContext(ctx), { forceLive }).then((env) => {
       store.putEvidence(env);
+      applyPatch(env);
       return env;
     });
     toolCache.set(key, result);
@@ -79,8 +145,17 @@ function attach(e: VoiceEngine): void {
   unsubscribe = EVENT_TYPES.map((type) =>
     e.on(type, (ev) => {
       if (engine !== e) return; // late event from an engine that was replaced
-      const event = ev as AnyEngineEvent;
+      // `seq` is monotonic per session, across engines and local events (docs/08 §2).
+      let event = { ...(ev as AnyEngineEvent), seq: ++localSeq } as AnyEngineEvent;
+      // The engine now takes the question that was echoed early: same bubble, not a second one.
+      if (event.type === "transcript" && pendingEcho && event.payload.role === "user" && event.payload.text === pendingEcho.text) {
+        if (pendingEcho.shown) event = { ...event, payload: { ...event.payload, utterance_id: pendingEcho.id } };
+        pendingEcho = null;
+      }
       store.dispatch(event);
+      // As soon as the greeting starts (not when it ends) the question appears below it.
+      if (event.type === "transcript" && event.payload.role === "agent") showEcho();
+      else if (event.type === "status" && event.payload.state === "listening") showEcho();
       afterEvent(event);
     }),
   );
@@ -115,7 +190,8 @@ function afterEvent(ev: AnyEngineEvent): void {
     const p = ev.payload;
     if (p.role === "user" && p.final && !p.corrects && ev.turn_id) {
       attemptsThisTurn = 1;
-      void runAnalysis(p.utterance_id, p.text, ev.turn_id, ev.state_version, p.t_start);
+      preferDirectIfAsked(p.text);
+      void runAnalysis(p.utterance_id, p.text, ev.turn_id, ev.state_version, p.t_start, p.t_end, p.t_source !== "local");
     }
   } else if (ev.type === "status") {
     if (ev.payload.state === "listening" && pendingQuestion) {
@@ -133,12 +209,58 @@ function afterEvent(ev: AnyEngineEvent): void {
 
 // ── Analyst and style ────────────────────────────────────────────────────────
 
-async function runAnalysis(utterance_id: string, text: string, turn_id: string, state_version: number, t: number): Promise<void> {
-  const conversation = store.getState().conversation_id;
-  const entry = await analyze({ utterance_id, text, turn_id, state_version, t, voiceConsent: store.getState().voiceAnalysis });
+/** WAV of the utterance (±250 ms) from the 30 s mic ring, base64. Null when there is none. */
+async function utteranceClip(tStart: number, tEnd: number): Promise<string | null> {
+  const mic = getMicTap();
+  if (!mic.active || tEnd <= tStart) return null;
+  const blob = mic.slice(tStart - 250, tEnd + 250);
+  if (!blob) return null;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+async function runAnalysis(utterance_id: string, text: string, turn_id: string, state_version: number, t: number, tEnd: number = t, spoken = false): Promise<void> {
+  const before = store.getState();
+  const conversation = before.conversation_id;
+  const consent = before.voiceAnalysis;
+  // The clip leaves the browser only with consent, and only for a spoken utterance.
+  const audioWavB64 = consent && spoken && !before.simulated ? await utteranceClip(t, tEnd).catch(() => null) : null;
+  const turn = before.turns.find((x) => x.turn_id === turn_id);
+  const entry = await analyze({
+    utterance_id,
+    text,
+    turn_id,
+    state_version,
+    t,
+    voiceConsent: consent,
+    t_start: t,
+    t_end: tEnd,
+    signals: {
+      spoken,
+      interrupted_agent: before.turns.some((x) => x.interrupted_at !== null && x.n === (turn?.n ?? before.turns.length) - 1),
+      is_correction: /^\s*(no[, ]|corrección|dije )/i.test(text),
+      engine_attempts: attemptsThisTurn,
+    },
+    audioWavB64,
+    affectHistory: before.affect.slice(-3).map((a) => a.estimate),
+    tonePreference: tonePreference(),
+    currentStyle: before.style,
+    turnIndex: turn?.n ?? before.turns.length,
+  });
   const s = store.getState();
   if (s.conversation_id !== conversation) return; // the session was restarted meanwhile
   store.pushAffect(entry);
+  if (entry.style) {
+    // The backend applied the style policy (docs/10 §6). An explicit preference still wins here.
+    const changed = entry.style.style !== s.style.style || entry.style.directives.join("|") !== s.style.directives.join("|");
+    if (changed && !(s.style.source === "preference" && entry.style.source !== "preference")) {
+      store.setStyle(entry.style);
+      engine?.applyStyle(entry.style);
+    }
+    return;
+  }
   const outcome = inferStyle(
     s.affect.map((a) => a.estimate),
     s.style,
@@ -217,7 +339,7 @@ async function switchEngine(to: EngineId, reason: string, automatic: boolean): P
   const created = createEngine(to, deps, { script: false });
   attach(created.engine);
   try {
-    await created.engine.connect({ conversationId: s.conversation_id, seed, style: s.style, voice: voiceFor(to) });
+    await created.engine.connect({ conversationId: s.conversation_id, seed, style: s.style, voiceMode: voiceFor(to) });
   } catch {
     if (engine !== created.engine) return; // superseded by a newer action
     store.setStatus("error");
@@ -250,11 +372,19 @@ export async function start(opts: { question?: string; engine?: EngineId } = {})
   firstQuery = true;
   attemptsThisTurn = 1;
   toolCache.clear();
+  confirmedFilters = {};
+  selectedSiteKeys = [];
   pendingQuestion = opts.question ?? null;
   store.beginSession(conversationId, id, created.model, created.simulated);
   attach(created.engine);
+  pendingEcho = null;
+  if (opts.question) {
+    // The question is shown as soon as the greeting starts; the engine answers it after the brief.
+    pendingEcho = { id: crypto.randomUUID(), text: opts.question, shown: false };
+    preferDirectIfAsked(opts.question);
+  }
   try {
-    await created.engine.connect({ conversationId, style: store.getState().style, voice: voiceFor(id) });
+    await created.engine.connect({ conversationId, style: store.getState().style, voiceMode: voiceFor(id) });
   } catch {
     // Cancelled by Stop/Restart while connecting: nothing to report.
   }
@@ -265,6 +395,7 @@ export function stop(): void {
   detach();
   engine = null;
   pendingQuestion = null;
+  pendingEcho = null;
   void previous?.disconnect("user_stop");
   store.endSession();
 }
@@ -282,6 +413,7 @@ export function sendText(text: string): void {
     return;
   }
   if (!engine) return; // an engine switch is in flight
+  preferDirectIfAsked(clean); // before sending, so it already shapes this answer
   engine.sendText(clean);
 }
 
@@ -348,6 +480,10 @@ export function selectEngine(id: EngineId): void {
 /** The cloned voice only exists for engines that support it; otherwise fall back and say so. */
 function voiceFor(id: EngineId): VoiceMode {
   const mode = store.getState().voiceMode;
+  if (mode === "cloned" && !store.getState().voiceModes.includes("cloned")) {
+    store.setVoiceMode("engine");
+    return "engine";
+  }
   if (mode === "cloned" && !engineInfo(id).clonedVoice) {
     store.setVoiceMode("engine");
     store.pushNotice("info", `La voz clonada solo está disponible con OpenAI Realtime: ${engineLabel(id)} usa su propia voz.`, now());
@@ -359,7 +495,7 @@ function voiceFor(id: EngineId): VoiceMode {
 /** Applies from the next session or engine switch (the voice is fixed when the credential is issued). */
 export function setVoiceMode(mode: VoiceMode): void {
   const s = store.getState();
-  if (mode === "cloned" && !engineInfo(s.engine).clonedVoice) return;
+  if (mode === "cloned" && (!engineInfo(s.engine).clonedVoice || !s.voiceModes.includes("cloned"))) return;
   store.setVoiceMode(mode);
   if (s.running) store.pushNotice("info", "El cambio de voz aplica al iniciar la próxima sesión.", now());
 }
@@ -377,12 +513,15 @@ export async function requery(toolCallId: string): Promise<void> {
   store.setRequery(toolCallId, { pending: true });
   const env = await runTool(
     { tool_call_id: crypto.randomUUID(), name: entry.name, args: entry.args },
-    { conversation_id: s.conversation_id ?? "", turn_id: entry.turn_id ?? "", state_version: entry.state_version },
+    canonicalContext({ conversation_id: s.conversation_id ?? "", turn_id: entry.turn_id ?? "", state_version: entry.state_version }),
     { forceLive: true },
   );
   const matches = env.status === "ok" && before !== undefined && JSON.stringify(env.data) === JSON.stringify(before.data);
   store.setRequery(toolCallId, { pending: false, matches, ms: env.trace.ms, at: Date.now() });
 }
+
+// Ask the backend which voices it offers, so the UI only shows what exists (docs/08 §3).
+void fetchVoiceModes().then((modes) => store.setVoiceModes(modes));
 
 // Initial engine metadata, so the HUD is truthful before the first session.
 {

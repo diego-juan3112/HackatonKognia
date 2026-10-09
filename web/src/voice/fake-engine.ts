@@ -150,6 +150,10 @@ const REPLIES = {
         ? "La fuente no tiene disponibilidad ni ubicación. Sí puedo darte las camas instaladas de un municipio."
         : "Eso no lo puedo saber: la fuente registra capacidad instalada con corte a noviembre de 2022 y no tiene disponibilidad en tiempo real ni geolocalización. Sí puedo decirte cuántas camas instaladas o cuántas IPS hay en un municipio.",
   },
+  uncovered: {
+    say: () =>
+      "Este es el motor simulado y su guion no cubre ese lugar, así que no voy a darte una cifra que no consulté. Con un motor real se consultaría en datos.gov.co.",
+  },
   direct: { say: () => "Entendido. Desde ahora respondo más breve y con la cifra primero." },
   thanks: { say: () => "Con gusto. ¿Qué más quieres consultar?" },
   offScript: {
@@ -170,6 +174,8 @@ function pickReply(text: string): Reply {
   }
   if (/publicas|privadas|mixtas|naturaleza/.test(q)) return REPLIES.byNature;
   if (/(ips|prestadores)/.test(q) && /bogota/.test(q)) return REPLIES.providersBogota;
+  // A place the script does not cover must never be answered with the national total.
+  if (/(ips|prestadores)/.test(q) && /\ben (?!total\b|el pais\b|todo\b|colombia\b)[a-z]/.test(q)) return REPLIES.uncovered;
   if (/cuant\w+ (ips|prestadores)/.test(q)) return REPLIES.providersTotal;
   if (/directo|confund|breve/.test(q)) return REPLIES.direct;
   if (/gracias/.test(q)) return REPLIES.thanks;
@@ -216,7 +222,7 @@ export class FakeEngine implements VoiceEngine {
 
   // ── VoiceEngine ────────────────────────────────────────────────────────────
 
-  async connect(opts: { conversationId: string; seed?: ContextEnvelope; style?: StyleDecision; voice?: VoiceMode }): Promise<void> {
+  async connect(opts: { conversationId: string; seed?: ContextEnvelope; style?: StyleDecision; voiceMode?: VoiceMode }): Promise<void> {
     this.conversationId = opts.conversationId;
     this.style = opts.style;
     this.connected = true;
@@ -251,7 +257,7 @@ export class FakeEngine implements VoiceEngine {
     this.launch((r) => this.textTurn(text, r), this.run);
   }
 
-  interrupt(playedMs: number): void {
+  interrupt(playedMs: number, _deliveredText?: string): void {
     if (!this.speaking) return;
     this.cutSpeech(playedMs > 0 ? playedMs : this.playedMs());
     this.cancel();
@@ -379,17 +385,21 @@ export class FakeEngine implements VoiceEngine {
     const sp = this.speaking;
     if (!sp) return;
     const delivered = sp.words.slice(0, sp.heard).join(" ");
+    // `interrupted` closes the generation: it is the first sign of the cut and nothing with
+    // that generation_id follows it (docs/08 §6.5). The store closes the utterance from it.
     this.emit("interrupted", { generation_id: sp.generationId, played_ms: Math.round(playedMs), delivered_text: delivered });
+    if (delivered) this.lastAnswer = delivered;
+    // Bookkeeping that closes the utterance and the speech goes out detached from the
+    // generation (envelope generation_id = null), so the interrupted id never reappears.
+    this.generationId = null;
     this.emitAgentText(sp, true);
     this.emit("speech", { phase: "stop", generation_id: sp.generationId, kind: sp.kind });
+    this.speaking = null;
     if (this.latency) {
       // Simulated local stop: the playback queue is flushed a few tens of ms after detection.
       this.latency.t_playback_stop = this.now() + 40 + Math.round(Math.random() * 60);
       this.emit("latency", this.latency);
     }
-    if (delivered) this.lastAnswer = delivered;
-    this.speaking = null;
-    this.generationId = null;
   }
 
   // ── Turns ──────────────────────────────────────────────────────────────────
@@ -433,18 +443,20 @@ export class FakeEngine implements VoiceEngine {
       turn_id: this.turnId ?? "",
       state_version: this.stateVersion,
     });
-    this.alive(run);
-    if (this.latency && name !== "correct_context") {
+    const current = run === this.run;
+    if (current && this.latency && name !== "correct_context") {
       this.latency.t_tool_start = tStart;
       this.latency.t_tool_end = this.now();
     }
     if (env.status === "ok") this.stateVersion = Math.max(this.stateVersion, env.state_version);
+    // Every tool_call gets its tool_result, even when a newer turn superseded this one.
     this.emit("tool_result", {
       tool_call_id: call.tool_call_id,
       status: env.status,
       trace: { soql: env.trace.soql, ms: env.trace.ms, rows: env.trace.rows, cache_status: env.evidence.cache_status },
       evidence_ref: env.evidence.query_fingerprint,
     });
+    this.alive(run);
     return env;
   }
 

@@ -1,7 +1,7 @@
 /**
  * Markup for one tool call and its evidence (docs/09 §5): SoQL, time, rows,
- * source and cutoff, cache badge and «Reconsultar». Shared by the «API en vivo»
- * tab and by the collapsible evidence card under each answer in the chat.
+ * source and cutoff, cache badge and «Reconsultar». Used by the «API en vivo»
+ * section of the admin board; the conversation screen only shows `citeLine`.
  * Styles live in components/ApiPanel.astro.
  */
 import { USING_MOCKS } from "../voice/api";
@@ -94,7 +94,7 @@ function requeryLine(entry: ToolEntry): string {
 
 /** Cache badge, or the failure status when the call did not succeed. */
 export function badge(t: ToolEntry): string {
-  if (!t.trace || !t.status) return '<span class="tag tag-warn">consultando</span>';
+  if (!t.trace || !t.status) return '<span class="tag tag-note">consultando</span>';
   if (t.status !== "ok") return `<span class="tag tag-bad">${icon("triangle-alert")} ${STATUS[t.status]}</span>`;
   const cache = CACHE[t.trace.cache_status];
   // Without a backend the envelope is a recording: the badge must not pass for a live call.
@@ -105,7 +105,7 @@ export function badge(t: ToolEntry): string {
 /** One-line summary used as the header of the collapsible card in the chat. */
 export function summaryLine(t: ToolEntry): string {
   const facts = t.trace ? `<span class="num">${dur(t.trace.ms)}</span><span class="num">${num(t.trace.rows)} ${t.trace.rows === 1 ? "fila" : "filas"}</span>` : "";
-  return `<code class="mono">${esc(t.name)}</code>${facts}${badge(t)}${t.invalidated ? '<span class="tag tag-violet">invalidada</span>' : ""}`;
+  return `<code class="mono">${esc(t.name)}</code>${facts}${badge(t)}${t.invalidated ? '<span class="tag tag-accent">invalidada</span>' : ""}`;
 }
 
 /** Full body of an entry (everything but the outer list item). */
@@ -120,7 +120,7 @@ export function evidenceBody(t: ToolEntry, s: ConsoleState): string {
   const canRequery = t.name !== "correct_context" && t.status === "ok" && !t.invalidated;
   return `${t.invalidated ? `<p class="void">${icon("split")} Evidencia invalidada por una corrección</p>` : ""}
     ${head}
-    ${t.trace.soql ? `<pre class="mono soql" tabindex="0" aria-label="Consulta SoQL"><code>${soql(t.trace.soql)}</code></pre>` : ""}
+    ${t.trace.soql ? `<pre class="mono soql" data-testid="soql" tabindex="0" aria-label="Consulta SoQL"><code>${soql(t.trace.soql)}</code></pre>` : ""}
     <p class="meta">
       ${badge(t)}
       <span class="num"><strong>${dur(t.trace.ms)}</strong></span>
@@ -131,5 +131,28 @@ export function evidenceBody(t: ToolEntry, s: ConsoleState): string {
     ${env && env.status === "ok" ? `<p class="src">Fuente: datos.gov.co, conjunto ${esc(env.evidence.dataset_id)} (MinSalud, REPS). Corte: ${esc(cutoff)}. Consultado a las ${fetched}.</p>` : ""}
     ${warnings ? `<ul class="warnings">${warnings}</ul>` : ""}
     ${requeryLine(t)}
-    ${canRequery ? `<button class="btn btn-sm requery-btn" type="button" data-requery="${esc(t.tool_call_id)}" ${t.requery?.pending ? "disabled" : ""}>${icon("refresh-cw")} Reconsultar</button>` : ""}`;
+    ${canRequery ? `<button class="btn requery-btn" type="button" data-testid="requery-button" data-requery="${esc(t.tool_call_id)}" ${t.requery?.pending ? 'aria-disabled="true"' : ""}>${icon("refresh-cw")} Reconsultar</button>` : ""}`;
+}
+
+const MONTHS: Record<string, string> = {
+  jan: "ene", feb: "feb", mar: "mar", apr: "abr", may: "may", jun: "jun",
+  jul: "jul", aug: "ago", sep: "sep", oct: "oct", nov: "nov", dec: "dic",
+};
+
+/** «Nov  5 2022  1:37PM» → «5-nov-2022». Falls back to the raw text. */
+export function shortCutoff(raw: string): string {
+  const clean = raw.replace(/\s+/g, " ").replace(/^Fecha corte REPS:\s*/i, "").trim();
+  const m = /^([A-Za-z]{3})[a-z]*\.? (\d{1,2}),? (\d{4})/.exec(clean);
+  const month = m ? MONTHS[m[1]!.toLowerCase()] : undefined;
+  return m && month ? `${Number(m[2])}-${month}-${m[3]}` : clean;
+}
+
+/**
+ * The only trace of the source on the conversation screen: who publishes the
+ * figure and its cutoff. Empty when the call failed or was superseded.
+ */
+export function citeLine(t: ToolEntry, s: ConsoleState): string {
+  const env = t.evidence_ref ? s.evidence[t.evidence_ref] : undefined;
+  if (!env || env.status !== "ok" || t.invalidated || t.name === "correct_context") return "";
+  return `Fuente: REPS · MinSalud, corte ${esc(shortCutoff(env.evidence.cutoff_raw))}`;
 }

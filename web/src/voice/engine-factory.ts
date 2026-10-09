@@ -1,30 +1,22 @@
 /**
  * Engine factory: the single place where a VoiceEngine implementation is chosen.
  *
- * TODAY every engine id resolves to FakeEngine (scripted, no audio, no network).
+ * With a backend (`PUBLIC_API_URL`), each engine id resolves to its real adapter:
+ * `./openai-engine.ts` and `./gemini-engine.ts`. They ask `POST /realtime/session`
+ * for an ephemeral credential, open the provider WebSocket from the browser and
+ * share one audio stack (`./audio/`). No provider key reaches the browser (R-28).
  *
- * HOW TO PLUG THE REAL ENGINES (docs/08 §2–§4):
+ * Without a backend, or when the double is forced, every id resolves to FakeEngine
+ * (scripted, no audio, no network) and the UI says so. The double is forced with
+ * `PUBLIC_VOICE_ENGINE=fake` at build time or `?engine=fake` in the URL.
  *
- *   1. Create `./openai-engine.ts` exporting `class OpenAIRealtimeEngine implements VoiceEngine`
- *      and `./gemini-engine.ts` exporting `class GeminiLiveEngine implements VoiceEngine`.
- *      Each adapter:
- *        - in `connect()`, calls `POST {PUBLIC_API_URL}/realtime/session` with
- *          `{ engine, conversation_id, seed?, style?, locale: "es-CO" }` and opens the
- *          provider WebSocket with the ephemeral credential it returns (`connect.url`,
- *          `connect.token`). No provider key ever reaches the browser (R-28);
- *        - translates provider messages into the EngineEvents of `./types.ts`. No provider
- *          event name, audio format or credential leaves the adapter (R-03);
- *        - on a provider function call, emits `tool_call`, awaits `deps.runTool(...)`,
- *          emits `tool_result` and hands `{status, data, warnings, evidence_summary}` back
- *          to the provider as the function output;
- *        - shares the one audio stack (MicTap + Player, docs/08 §4), to be added under
- *          `./audio/`.
- *   2. Register them in REAL_ENGINES below. Nothing else in the UI changes: the
- *      controller (`./controller.ts`), the store and every panel only know VoiceEngine.
- *   3. `model` below comes from the voice spike; an adapter should overwrite it with the
- *      `model` field of `POST /realtime/session` once connected.
+ * Nothing else in the UI changes: the controller, the store and every panel only
+ * know VoiceEngine (docs/08 §2).
  */
+import { USING_MOCKS } from "./api";
 import { FakeEngine, type EngineDeps, type FakeEngineOptions } from "./fake-engine";
+import { GeminiLiveEngine } from "./gemini-engine";
+import { OpenAIRealtimeEngine } from "./openai-engine";
 import type { EngineId, VoiceEngine } from "./types";
 
 export interface EngineInfo {
@@ -57,17 +49,23 @@ export interface CreatedEngine {
 
 type RealEngineCtor = new (deps: EngineDeps) => VoiceEngine;
 
-/**
- * Real adapters go here, e.g.:
- *   import { OpenAIRealtimeEngine } from "./openai-engine";
- *   import { GeminiLiveEngine } from "./gemini-engine";
- *   const REAL_ENGINES = { openai: OpenAIRealtimeEngine, gemini: GeminiLiveEngine };
- */
-const REAL_ENGINES: Partial<Record<EngineId, RealEngineCtor>> = {};
+const REAL_ENGINES: Record<EngineId, RealEngineCtor> = { openai: OpenAIRealtimeEngine, gemini: GeminiLiveEngine };
+
+function fakeForced(): boolean {
+  if ((import.meta.env.PUBLIC_VOICE_ENGINE ?? "") === "fake") return true;
+  try {
+    return typeof location !== "undefined" && new URLSearchParams(location.search).get("engine") === "fake";
+  } catch {
+    return false;
+  }
+}
+
+/** True when sessions run on the real engines (there is a backend and the double is not forced). */
+export const realEngines = (): boolean => !USING_MOCKS && !fakeForced();
 
 export function createEngine(id: EngineId, deps: EngineDeps, fake: FakeEngineOptions = {}): CreatedEngine {
-  const Real = REAL_ENGINES[id];
-  if (Real) {
+  if (realEngines()) {
+    const Real = REAL_ENGINES[id];
     return { engine: new Real(deps), model: engineInfo(id).model, simulated: false };
   }
   // The label names the model the real adapter will use, and says plainly that this is the double.

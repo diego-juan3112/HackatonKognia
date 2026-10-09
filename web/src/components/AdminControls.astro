@@ -1,0 +1,262 @@
+---
+/**
+ * Operator controls: engine and voice selectors, the voice-analysis switch
+ * (on by default, this is the only place to turn it off) and the repair
+ * actions: Corregir lo que dije, Más directo, Repetir, Reiniciar.
+ */
+import PencilLine from "@lucide/astro/icons/pencil-line";
+import Repeat2 from "@lucide/astro/icons/repeat-2";
+import RotateCcw from "@lucide/astro/icons/rotate-ccw";
+import Zap from "@lucide/astro/icons/zap";
+import { ENGINES } from "../voice/engine-factory";
+---
+
+<section class="card board-card controls" id="controls" data-section="agente" aria-labelledby="controls-title">
+  <header class="board-head">
+    <h2 id="controls-title">Agente</h2>
+  </header>
+
+  <div class="fields">
+    <label>
+      <span>Motor</span>
+      <select class="select" id="engine-select" data-testid="engine-select">
+        {ENGINES.map((e) => <option value={e.id}>{e.label}</option>)}
+      </select>
+    </label>
+    <label>
+      <span>Voz</span>
+      <select class="select" id="voice-select" data-testid="voice-select">
+        <option value="engine">Voz del motor</option>
+        <option value="cloned">Voz clonada</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="setting">
+    <button class="switch" type="button" role="switch" id="voice-switch" data-testid="analysis-switch" aria-checked="true" aria-describedby="voice-help">
+      <span>Análisis de voz</span>
+      <span class="knob" aria-hidden="true"></span>
+    </button>
+    <p id="voice-help">Estima el tono además del texto.</p>
+  </div>
+
+  <div class="actions" role="group" aria-label="Acciones sobre la conversación">
+    <button class="btn" type="button" id="btn-correct" data-testid="correct-button" disabled><PencilLine aria-hidden="true" /> Corregir lo que dije</button>
+    <button class="btn" type="button" id="btn-direct" data-testid="direct-button" aria-pressed="false"><Zap aria-hidden="true" /> Más directo</button>
+    <button class="btn" type="button" id="btn-repeat" data-testid="repeat-button" disabled><Repeat2 aria-hidden="true" /> Repetir</button>
+    <button class="btn" type="button" id="btn-restart" data-testid="restart-button"><RotateCcw aria-hidden="true" /> Reiniciar</button>
+  </div>
+
+  <form class="fix" id="fix-form" hidden>
+    <label for="fix-input">Corrige la última intervención</label>
+    <input id="fix-input" data-testid="correct-input" type="text" autocomplete="off" required />
+    <div class="fix-row">
+      <button class="btn btn-primary" type="submit">Enviar corrección</button>
+      <button class="btn" type="button" id="fix-cancel">Cancelar</button>
+    </div>
+  </form>
+</section>
+
+<script>
+  import { analysisWanted, setAnalysisWanted } from "../scripts/analysis";
+  import { bind, byId, panel } from "../scripts/dom";
+  import * as controller from "../voice/controller";
+  import { engineInfo } from "../voice/engine-factory";
+  import { getState } from "../voice/store";
+  import type { EngineId, VoiceMode } from "../voice/types";
+
+  panel("controls", () => {
+    const engine = byId<HTMLSelectElement>("engine-select");
+    const voice = byId<HTMLSelectElement>("voice-select");
+    const analysis = byId<HTMLButtonElement>("voice-switch");
+    const fixForm = byId<HTMLFormElement>("fix-form");
+    const fixInput = byId<HTMLInputElement>("fix-input");
+    const correct = byId<HTMLButtonElement>("btn-correct");
+    const direct = byId<HTMLButtonElement>("btn-direct");
+    const repeat = byId<HTMLButtonElement>("btn-repeat");
+    let fixTarget: string | null = null;
+
+    engine?.addEventListener("change", () => controller.selectEngine(engine.value as EngineId));
+    voice?.addEventListener("change", () => controller.setVoiceMode(voice.value as VoiceMode));
+    analysis?.addEventListener("click", () => setAnalysisWanted(!analysisWanted()));
+
+    const closeFix = (): void => {
+      if (fixForm) fixForm.hidden = true;
+      fixTarget = null;
+    };
+
+    correct?.addEventListener("click", () => {
+      const target = [...getState().utterances].reverse().find((u) => u.role === "user" && u.final);
+      if (!target || !fixForm || !fixInput) return;
+      fixTarget = target.id;
+      fixForm.hidden = false;
+      fixInput.value = target.correction?.text ?? target.text;
+      fixInput.focus();
+      fixInput.select();
+    });
+    byId("fix-cancel")?.addEventListener("click", () => {
+      closeFix();
+      correct?.focus();
+    });
+    fixForm?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (fixTarget && fixInput) controller.correct(fixTarget, fixInput.value);
+      closeFix();
+    });
+    direct?.addEventListener("click", () => controller.toggleDirect());
+    repeat?.addEventListener("click", () => controller.repeat());
+    byId("btn-restart")?.addEventListener("click", () => {
+      closeFix();
+      controller.restart();
+    });
+
+    return bind(["meta", "transcript", "style", "status"], (s) => {
+      if (engine) engine.value = s.engine;
+      if (voice) {
+        const cloned = voice.querySelector<HTMLOptionElement>('option[value="cloned"]');
+        const available = engineInfo(s.engine).clonedVoice;
+        if (cloned) {
+          cloned.disabled = !available;
+          cloned.textContent = available ? "Voz clonada" : "Voz clonada (solo con OpenAI)";
+        }
+        voice.value = s.voiceMode;
+      }
+      analysis?.setAttribute("aria-checked", String(s.voiceAnalysis));
+      const help = byId("voice-help");
+      if (help) help.textContent = s.voiceAnalysis ? "Estima el tono además del texto." : "Apagado: solo se analiza el texto.";
+      if (repeat) repeat.disabled = !s.running || !s.utterances.some((u) => u.role === "agent" && u.kind === "answer" && u.final);
+      if (correct) correct.disabled = !s.running || !s.utterances.some((u) => u.role === "user" && u.final);
+      if (direct) direct.setAttribute("aria-pressed", String(s.style.source === "preference" && s.style.style === "directo"));
+    });
+  });
+</script>
+
+<style>
+  .controls {
+    display: grid;
+    align-content: start;
+    gap: var(--s-4);
+  }
+
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    gap: var(--s-3);
+  }
+
+  .fields label {
+    display: grid;
+    gap: var(--s-1);
+    min-width: 0;
+  }
+
+  .fields span,
+  .fix label {
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+    font-weight: 600;
+  }
+
+  .setting {
+    display: grid;
+    gap: 2px;
+    padding-block: var(--s-3);
+    border-block: 1px solid var(--border);
+  }
+
+  .switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0;
+    border: 0;
+    background: none;
+    font-weight: 650;
+    text-align: left;
+  }
+
+  /* On = dark fill with the knob to the right; off = outlined and empty. */
+  .knob {
+    position: relative;
+    flex: none;
+    width: 3rem;
+    height: 1.75rem;
+    border: 2px solid var(--blue-500);
+    border-radius: var(--r-pill);
+    background: var(--card);
+    transition:
+      background-color 0.2s,
+      border-color 0.2s;
+  }
+
+  .knob::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(1.75rem - 10px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--blue-500);
+    transition:
+      transform 0.2s var(--ease),
+      background-color 0.2s;
+  }
+
+  .switch[aria-checked="true"] .knob {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  .switch[aria-checked="true"] .knob::after {
+    background: var(--white);
+    transform: translateX(1.25rem);
+  }
+
+  .setting p {
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    gap: var(--s-2);
+  }
+
+  .actions .btn {
+    justify-content: flex-start;
+    border-radius: var(--r-md);
+  }
+
+  .fix {
+    display: grid;
+    gap: var(--s-2);
+    padding: var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--accent-soft);
+  }
+
+  .fix input {
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0 var(--s-3);
+    border: 1px solid var(--border-field);
+    border-radius: var(--r-md);
+    background: var(--card);
+  }
+
+  .fix-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .fix-row .btn {
+    min-height: var(--tap);
+    font-size: var(--t-sm);
+  }
+</style>

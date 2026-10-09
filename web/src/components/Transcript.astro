@@ -1,0 +1,154 @@
+---
+/**
+ * Transcript for the operator (docs/08 §8): every utterance with its session
+ * time as `mm:ss.mmm` and its role, plus session and error notices in place.
+ * The conversation screen shows the same data as chat bubbles.
+ */
+---
+
+<section class="card board-card transcript" id="transcript" data-testid="transcript" data-section="transcripcion" aria-labelledby="transcript-title">
+  <header class="board-head">
+    <h2 id="transcript-title">Transcripción</h2>
+    <p>Tiempo de sesión en mm:ss.mmm.</p>
+  </header>
+  <ol class="t-list board-scroll" id="t-list" tabindex="0" aria-label="Transcripción con marcas de tiempo"></ol>
+</section>
+
+<script>
+  import { bind, byId, clock, esc, panel, reconcile, type KeyedItem } from "../scripts/dom";
+  import type { ConsoleState, Notice, Utterance } from "../voice/store";
+
+  const ROLE = { agent: "Asistente", user: "Usuario" } as const;
+
+  function text(u: Utterance): string {
+    if (u.role === "user" && u.correction) {
+      return `<s>${esc(u.text)}</s> <span class="fixed">${esc(u.correction.text)}</span>`;
+    }
+    if (u.role === "agent" && u.delivered_text !== undefined) {
+      const rest = u.text.startsWith(u.delivered_text) ? u.text.slice(u.delivered_text.length) : "";
+      return `${esc(u.delivered_text)}${rest.trim() ? `<s title="Generado, pero no llegó a oírse">${esc(rest)}</s>` : ""}`;
+    }
+    return esc(u.text);
+  }
+
+  function row(u: Utterance): KeyedItem {
+    const tags: string[] = [];
+    if (u.kind === "ack") tags.push("aviso previo");
+    if (u.kind === "brief") tags.push("resumen inicial");
+    if (u.role === "user" && u.t_source === "local") tags.push("por texto");
+    if (u.correction) tags.push("corregido");
+    if (u.delivered_text !== undefined) tags.push("interrumpido");
+    if (!u.final) tags.push("en curso");
+    return {
+      key: u.id,
+      cls: `t-row role-${u.role}${u.final ? "" : " partial"}`,
+      testid: `transcript-row-${u.role}`,
+      html: `<time class="mono">${clock(u.t_start)}</time><span class="role">${ROLE[u.role]}</span><p>${text(u)}${tags.map((t) => ` <span class="tag tag-quiet">${t}</span>`).join("")}</p>`,
+    };
+  }
+
+  function noticeRow(n: Notice): KeyedItem {
+    return {
+      key: `n-${n.id}`,
+      cls: `t-row role-system${n.kind === "error" ? " is-error" : ""}`,
+      html: `<time class="mono">${clock(n.t)}</time><span class="role">${n.kind === "error" ? "Error" : "Sistema"}</span><p>${esc(n.text)}</p>`,
+    };
+  }
+
+  function rows(s: ConsoleState): KeyedItem[] {
+    const items: KeyedItem[] = [];
+    const notices = [...s.notices];
+    for (const u of s.utterances) {
+      while (notices[0] && notices[0].t <= u.t_start) items.push(noticeRow(notices.shift()!));
+      items.push(row(u));
+    }
+    for (const n of notices) items.push(noticeRow(n));
+    return items;
+  }
+
+  panel("transcript", () => {
+    const list = byId("t-list");
+    return bind(["transcript", "notices"], (s) => {
+      if (!list) return;
+      const items = rows(s);
+      if (!items.length) {
+        list.innerHTML = '<li class="board-empty">Aún no hay conversación.</li>';
+        return;
+      }
+      const pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+      reconcile(list, items);
+      if (pinned) list.scrollTop = list.scrollHeight;
+    });
+  });
+</script>
+
+<style is:global>
+  .t-list {
+    display: grid;
+    align-content: start;
+  }
+
+  .t-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 5.6rem 5rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: var(--s-1) var(--s-3);
+    padding: var(--s-2) 0;
+    border-top: 1px solid var(--border);
+    font-size: var(--t-sm);
+    line-height: 1.45;
+  }
+
+  .t-row:first-child {
+    border-top: 0;
+  }
+
+  .t-row time {
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .t-row .role {
+    font-weight: 700;
+  }
+
+  .t-row.role-agent .role { color: var(--blue-700); }
+  .t-row.role-user .role { color: var(--violet-700); }
+  .t-row.role-system .role { color: var(--ink-3); }
+
+  .t-row p {
+    overflow-wrap: anywhere;
+  }
+
+  .t-row.role-system p {
+    color: var(--ink-2);
+  }
+
+  .t-row.is-error .role,
+  .t-row.is-error p {
+    color: var(--danger);
+  }
+
+  .t-row.partial p {
+    color: var(--ink-2);
+  }
+
+  .t-row s {
+    color: var(--ink-3);
+  }
+
+  .t-row .fixed {
+    font-weight: 650;
+  }
+
+  @container board-card (max-width: 30rem) {
+    .t-row {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .t-row p {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

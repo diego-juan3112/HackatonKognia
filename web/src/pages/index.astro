@@ -1,97 +1,54 @@
 ---
 import ArrowRight from "@lucide/astro/icons/arrow-right";
 import Mic from "@lucide/astro/icons/mic";
-import ShieldCheck from "@lucide/astro/icons/shield-check";
 import Base from "../layouts/Base.astro";
 import Orb from "../components/Orb.astro";
 import brief from "../../mocks/brief.json";
 
 const nf = new Intl.NumberFormat("es-CO");
-const total = brief.by_nature.reduce((sum, g) => sum + g.value, 0);
-const pct = (v: number): string => {
-  const p = (v / total) * 100;
-  return `${p < 1 ? p.toFixed(2).replace(".", ",") : p.toFixed(1).replace(".", ",")} %`;
-};
-const natureClass: Record<string, string> = { Privada: "n-privada", Pública: "n-publica", Mixta: "n-mixta" };
+/** Total installed beds in the source (REPS, corte 5-nov-2022). The brief does not carry it yet. */
+const BEDS = 97036;
+
+const figures = [
+  { key: "providers", value: nf.format(brief.stats.providers), label: "IPS" },
+  { key: "site_codes", value: nf.format(brief.stats.site_codes), label: "sedes" },
+  { key: "beds", value: nf.format(BEDS), label: "camas" },
+];
 ---
 
-<Base
-  title="Asistente IPS en Vivo · pregúntale en voz alta al registro de IPS"
-  description="Asistente de voz con IA que consulta en vivo el registro de IPS de Colombia (REPS) en datos.gov.co."
->
-  <section class="hero">
-    <div class="hero-copy">
-      <h1>Pregúntale en voz alta al registro de IPS de Colombia.</h1>
-      <p class="lede">
-        Hablas, y un asistente consulta en ese momento datos.gov.co para decirte cuántos prestadores de salud hay, dónde
-        están y qué capacidad tienen instalada. Cada cifra llega con la consulta que la produjo.
-      </p>
-      <div class="cta">
-        <a class="btn btn-green" href="/consola?iniciar=1">
+<Base title="IPS en Vivo · Consulta el registro de IPS de Colombia" description="Consulta por voz el registro de IPS de Colombia (REPS, MinSalud) en datos.gov.co.">
+  <div class="cover">
+    <section class="hero">
+      <div class="hero-copy">
+        <h1>Consulta el registro de IPS de Colombia</h1>
+        <p class="lede">Pregunta con tu voz cuántas hay, dónde están y con qué capacidad cuentan.</p>
+        <a class="btn btn-talk" href="/consola?iniciar=1">
           <Mic aria-hidden="true" />
-          Iniciar conversación
+          Hablar ahora
         </a>
-        <a class="btn" href="/consola">Ver la consola primero</a>
       </div>
-      <p class="notice">
-        <ShieldCheck aria-hidden="true" />
-        <span>
-          <strong>Vas a hablar con una inteligencia artificial, no con una persona.</strong>
-          El micrófono se pide solo cuando pulsas Iniciar, el audio no se guarda y el análisis de voz requiere tu permiso
-          aparte.
-        </span>
-      </p>
-    </div>
-    <div class="hero-orb">
-      <Orb />
-    </div>
-  </section>
+      <div class="hero-orb">
+        <Orb />
+      </div>
+    </section>
 
-  <section class="brief" aria-labelledby="brief-title">
-    <div class="brief-data card">
-      <h2 id="brief-title">Lo que hay en la fuente</h2>
-      <p class="dataset">«{brief.title}»</p>
+    <section class="source" aria-labelledby="source-title">
+      <h2 id="source-title" class="sr-only">La fuente en cifras</h2>
+      <dl class="figures">
+        {
+          figures.map((f) => (
+            <div>
+              <dd class="num" data-brief={f.key}>{f.value}</dd>
+              <dt>{f.label}</dt>
+            </div>
+          ))
+        }
+      </dl>
+      <p class="origin">REPS · MinSalud, corte nov-2022</p>
+    </section>
 
-      <p class="grain">
-        <span class="big num" data-brief="rows">{nf.format(brief.stats.rows)}</span> filas, una por cada categoría de capacidad
-        de una sede. Describen
-        <span class="big num" data-brief="providers">{nf.format(brief.stats.providers)}</span> prestadores y
-        <span class="big num" data-brief="site_codes">{nf.format(brief.stats.site_codes)}</span> códigos de sede.
-      </p>
-
-      <figure class="nature">
-        <figcaption>Prestadores según su naturaleza jurídica</figcaption>
-        <div class="bar" role="img" aria-label={brief.by_nature.map((g) => `${g.key}: ${nf.format(g.value)}`).join(", ")}>
-          {brief.by_nature.map((g) => <span class={natureClass[g.key]} style={`flex-grow:${g.value}`} />)}
-        </div>
-        <ul class="legend">
-          {
-            brief.by_nature.map((g) => (
-              <li class={natureClass[g.key]}>
-                <span class="swatch" aria-hidden="true" />
-                <span class="k">{g.key}</span>
-                <span class="v num">{nf.format(g.value)}</span>
-                <span class="p num">{pct(g.value)}</span>
-              </li>
-            ))
-          }
-        </ul>
-      </figure>
-
-      <p class="source">
-        <span class="tag tag-quiet" id="brief-origin">Muestra grabada el 9-oct-2026</span>
-        Fuente: {brief.source.name}, licencia {brief.source.license}, corte {brief.source.cutoff_date}.
-      </p>
-
-      <h3>Lo que la fuente no sabe</h3>
-      <ul class="limits">
-        {brief.limits.map((l) => <li>{l}</li>)}
-      </ul>
-    </div>
-
-    <div class="brief-ask card">
-      <h2>Empieza por una de estas</h2>
-      <p class="hint">Todas se pueden contestar con la fuente. Al elegir una se abre la consola y se envía.</p>
+    <section class="ask" aria-labelledby="ask-title">
+      <h2 id="ask-title">Empieza por una pregunta</h2>
       <ul class="questions">
         {
           brief.suggested_questions.map((q) => (
@@ -104,8 +61,8 @@ const natureClass: Record<string, string> = { Privada: "n-privada", Pública: "n
           ))
         }
       </ul>
-    </div>
-  </section>
+    </section>
+  </div>
 </Base>
 
 <script>
@@ -115,85 +72,63 @@ const natureClass: Record<string, string> = { Privada: "n-privada", Pública: "n
 
   // With a backend, replace the recorded figures with the live brief (docs/09 §8).
   document.addEventListener("astro:page-load", async () => {
-    if (USING_MOCKS || !document.getElementById("brief-origin")) return;
+    if (USING_MOCKS || !document.querySelector("[data-brief]")) return;
     const { brief, live } = await fetchBrief();
-    const origin = document.getElementById("brief-origin");
-    if (!live || !origin) return;
-    for (const key of ["rows", "providers", "site_codes"] as const) {
+    if (!live) return;
+    for (const key of ["providers", "site_codes"] as const) {
       const el = document.querySelector(`[data-brief="${key}"]`);
       if (el) el.textContent = nf.format(brief.stats[key]);
     }
-    origin.textContent = `Consultado en vivo · ${brief.stats.ms} ms`;
-    origin.className = "tag tag-live";
   });
 </script>
 
 <style>
-  .hero {
-    --orb-size: clamp(260px, 36vw, 520px);
+  .cover {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: clamp(var(--s-6), 6vw, var(--s-8));
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(var(--s-5), 6vw, var(--s-8)) var(--gutter) var(--s-7);
+  }
+
+  /* ── Hero ──────────────────────────────────────────────────────────────── */
+
+  .hero {
+    --orb-size: clamp(220px, 34vw, 440px);
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
     align-items: center;
     gap: var(--s-6);
-    max-width: 1320px;
-    margin: 0 auto;
-    padding: clamp(var(--s-6), 6vw, var(--s-8)) clamp(var(--s-4), 4vw, var(--s-7)) var(--s-7);
+  }
+
+  .hero-copy {
+    display: grid;
+    justify-items: start;
+    gap: var(--s-5);
   }
 
   h1 {
+    max-width: 14ch;
     font-size: var(--t-2xl);
     font-weight: 720;
     font-variation-settings: "wdth" 88;
     letter-spacing: -0.03em;
     line-height: 0.98;
-    max-width: 15ch;
-    background: linear-gradient(105deg, var(--ink) 25%, var(--primary) 62%, var(--violet) 95%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--primary-ink);
   }
 
   .lede {
-    max-width: 54ch;
-    margin-top: var(--s-5);
+    max-width: 38ch;
     color: var(--ink-2);
+    font-size: clamp(var(--t-md), 1rem + 0.6vw, 1.3rem);
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+
+  .hero .btn-talk {
+    min-height: 3.75rem;
+    padding-inline: var(--s-6);
     font-size: var(--t-md);
-    line-height: 1.55;
-  }
-
-  .cta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s-3);
-    margin-top: var(--s-6);
-  }
-
-  .cta .btn:not(.btn-green) {
-    min-height: 3rem;
-    padding-inline: var(--s-5);
-  }
-
-  .notice {
-    display: flex;
-    gap: var(--s-3);
-    max-width: 58ch;
-    margin-top: var(--s-6);
-    padding-left: var(--s-4);
-    border-left: 3px solid var(--amber);
-    color: var(--ink-2);
-    font-size: var(--t-sm);
-    line-height: 1.55;
-  }
-
-  .notice :global(svg) {
-    margin-top: 0.2em;
-    color: var(--amber-ink);
-  }
-
-  .notice strong {
-    display: block;
-    color: var(--ink);
-    font-weight: 650;
   }
 
   .hero-orb {
@@ -201,145 +136,61 @@ const natureClass: Record<string, string> = { Privada: "n-privada", Pública: "n
     place-items: center;
   }
 
-  /* ── Brief ─────────────────────────────────────────────────────────────── */
+  /* ── Source, in figures ────────────────────────────────────────────────── */
 
-  .brief {
+  .source {
     display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    gap: clamp(var(--s-6), 5vw, var(--s-8));
-    max-width: 1320px;
-    margin: 0 auto;
-    gap: var(--s-4);
-    padding: 0 clamp(var(--s-4), 4vw, var(--s-7)) var(--s-7);
+    gap: var(--s-3);
+    padding-block: clamp(var(--s-5), 4vw, var(--s-6));
+    border-block: 1px solid var(--border);
   }
 
-  .brief > .card {
-    padding: clamp(var(--s-5), 3vw, var(--s-6));
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s-4);
+  }
+
+  .figures div {
+    display: grid;
+    gap: var(--s-1);
+  }
+
+  .figures dd {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 0.6rem + 4.6vw, 3.4rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--primary-ink);
+  }
+
+  .figures dt {
+    color: var(--ink-2);
+    font-size: clamp(var(--t-sm), 0.8rem + 0.4vw, var(--t-md));
+    font-weight: 600;
+  }
+
+  .origin {
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  /* ── Questions ─────────────────────────────────────────────────────────── */
+
+  .ask {
+    display: grid;
+    gap: var(--s-4);
   }
 
   h2 {
     font-size: var(--t-lg);
   }
 
-  h3 {
-    margin-top: var(--s-6);
-    font-size: var(--t-md);
-  }
-
-  .dataset {
-    margin-top: var(--s-2);
-    max-width: 60ch;
-    color: var(--ink-3);
-    font-size: var(--t-sm);
-  }
-
-  .grain {
-    max-width: 44ch;
-    margin-top: var(--s-5);
-    color: var(--ink-2);
-    font-size: var(--t-md);
-    line-height: 1.7;
-  }
-
-  .big {
-    font-family: var(--font-display);
-    font-size: 1.55em;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1;
-    color: var(--ink);
-  }
-
-  .nature {
-    margin-top: var(--s-6);
-    max-width: 640px;
-  }
-
-  figcaption {
-    margin-bottom: var(--s-3);
-    font-weight: 600;
-  }
-
-  .bar {
-    display: flex;
-    gap: 3px;
-    height: 2.5rem;
-  }
-
-  .bar span {
-    min-width: 5px;
-    border-radius: 4px;
-  }
-
-  .bar .n-privada { background: var(--violet); }
-  .bar .n-publica { background: var(--green); }
-  .bar .n-mixta { background: var(--amber); }
-
-  .legend {
-    display: grid;
-    gap: var(--s-1);
-    margin-top: var(--s-3);
-  }
-
-  .legend li {
-    display: grid;
-    grid-template-columns: 1rem 6rem 5rem auto;
-    align-items: center;
-    gap: var(--s-2);
-    font-size: var(--t-sm);
-  }
-
-  .swatch {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 3px;
-  }
-
-  .n-privada .swatch { background: var(--violet); }
-  .n-publica .swatch { background: var(--green); }
-  .n-mixta .swatch { background: var(--amber); }
-
-  .legend .v {
-    text-align: right;
-    font-weight: 650;
-  }
-
-  .legend .p {
-    color: var(--ink-3);
-  }
-
-  .source {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-2);
-    margin-top: var(--s-5);
-    color: var(--ink-3);
-    font-size: var(--t-sm);
-  }
-
-  .limits {
-    display: grid;
-    gap: var(--s-2);
-    margin-top: var(--s-3);
-    color: var(--ink-2);
-  }
-
-  .limits li {
-    padding-left: var(--s-4);
-    border-left: 3px solid var(--amber);
-  }
-
-  .hint {
-    max-width: 44ch;
-    margin-top: var(--s-2);
-    color: var(--ink-3);
-    font-size: var(--t-sm);
-  }
-
   .questions {
-    margin-top: var(--s-5);
-    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+    gap: var(--s-3);
   }
 
   .questions a {
@@ -347,45 +198,48 @@ const natureClass: Record<string, string> = { Privada: "n-privada", Pública: "n
     align-items: center;
     justify-content: space-between;
     gap: var(--s-4);
-    padding: var(--s-4) var(--s-2);
-    border-bottom: 1px solid var(--border);
-    font-family: var(--font-display);
-    font-size: var(--t-md);
-    font-weight: 550;
-    line-height: 1.25;
+    height: 100%;
+    min-height: 3.75rem;
+    padding: var(--s-3) var(--s-4) var(--s-3) var(--s-5);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--card);
+    font-weight: 600;
+    line-height: 1.3;
     text-decoration: none;
     transition:
-      padding 0.2s var(--ease),
-      color 0.2s;
+      border-color 0.15s,
+      background-color 0.15s;
   }
 
   .questions a :global(svg) {
-    color: var(--ink-3);
+    color: var(--accent);
     transition: transform 0.2s var(--ease);
   }
 
   .questions a:hover {
-    padding-left: var(--s-4);
-    color: var(--primary-ink);
+    border-color: var(--accent);
+    background: var(--accent-soft);
   }
 
   .questions a:hover :global(svg) {
-    color: inherit;
     transform: translateX(4px);
   }
 
-  @media (max-width: 900px) {
-    .hero,
-    .brief {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
+  @media (max-width: 760px) {
     .hero {
-      --orb-size: min(64vw, 300px);
+      --orb-size: min(44vw, 170px);
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-4);
     }
 
     .hero-orb {
       order: -1;
+      justify-items: start;
+    }
+
+    .hero .btn-talk {
+      width: 100%;
     }
   }
 </style>

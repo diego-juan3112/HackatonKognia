@@ -6,15 +6,15 @@
  */
 ---
 
-<section class="hud" id="hud" aria-labelledby="hud-title">
-  <header class="pane-head hud-meta">
+<section class="card board-card hud" id="hud" data-testid="latency-panel" data-section="latencia" aria-labelledby="hud-title">
+  <header class="board-head hud-meta">
     <h2 id="hud-title">Latencia por turno</h2>
     <p id="hud-engine"></p>
   </header>
   <div class="hud-main" id="hud-main"></div>
   <div class="hud-history" id="hud-history">
     <h3>Todos los turnos</h3>
-    <div class="hud-table" id="hud-table"></div>
+    <div class="hud-table" id="hud-table" tabindex="0" role="region" aria-label="Latencia de todos los turnos"></div>
   </div>
 </section>
 
@@ -48,13 +48,16 @@
     </div>`;
   }
 
+  const late = (t: TurnMetrics): boolean =>
+    t.first_useful_ms !== null && t.first_useful_ms > (t.tool_ms !== null ? TARGET_WITH_QUERY : TARGET_NO_QUERY);
+
   function stats(t: TurnMetrics): string {
     const tool =
       t.tool_ms !== null
         ? `${dur(t.tool_ms)}${t.rows !== null ? `, ${num(t.rows)} ${t.rows === 1 ? "fila" : "filas"}` : ""}${t.cache ? `, ${CACHE[t.cache]}` : ""}`
         : "sin consulta";
     const items: [string, string, string][] = [
-      ["Primer audio útil", dur(t.first_useful_ms), "key"],
+      ["Primer audio útil", `${dur(t.first_useful_ms)}${late(t) ? " · sobre el objetivo" : ""}`, late(t) ? "key late" : "key"],
       ["Aviso previo", t.ack_ms !== null ? dur(t.ack_ms) : "no hubo", "ack"],
       ["Herramienta", tool, "tool"],
       ["Intentos de motor", String(t.attempts), ""],
@@ -83,14 +86,14 @@
     const history = byId("hud-history");
     const last = s.turns[s.turns.length - 1];
     if (engine) {
-      engine.innerHTML = `<strong>${esc(engineLabel(s.engine))}</strong> <span>modelo: ${esc(s.model)}</span>${
-        s.simulated ? ' <span class="tag tag-quiet" title="No son mediciones de un proveedor">tiempos simulados</span>' : ""
+      engine.innerHTML = `<strong>${esc(engineLabel(s.engine))}</strong> <span class="mono">${esc(s.model)}</span>${
+        s.simulated ? ' <span class="tag tag-note" title="No son mediciones de un proveedor">tiempos simulados</span>' : ""
       }`;
     }
     if (main) {
       main.innerHTML = last
         ? `<p class="turn">Turno ${last.n}<span class="q">${esc(last.question)}</span></p>${track(last)}${stats(last)}`
-        : '<p class="hud-empty">Tras cada turno verás cuánto tardó el primer audio útil, y cuánto de eso fue la consulta a la fuente.</p>';
+        : '<p class="board-empty">Tras cada turno: cuánto tardó el primer audio útil y cuánto fue la consulta.</p>';
     }
     if (history) history.hidden = s.turns.length < 2;
     if (table) {
@@ -105,19 +108,6 @@
 </script>
 
 <style is:global>
-  .hud {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--s-3);
-    margin-top: var(--s-5);
-    padding-top: var(--s-5);
-    border-top: 1px solid var(--border);
-  }
-
-  .hud-meta {
-    padding-bottom: 0;
-  }
-
   .hud-meta p {
     display: flex;
     flex-wrap: wrap;
@@ -129,10 +119,14 @@
     color: var(--ink);
   }
 
+  .hud-meta .mono {
+    font-size: var(--t-xs);
+  }
+
   .hud-main {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--s-2);
+    gap: var(--s-3);
     min-width: 0;
   }
 
@@ -142,26 +136,20 @@
     min-width: 0;
     font-size: var(--t-sm);
     font-weight: 700;
+    white-space: nowrap;
   }
 
   .hud .turn .q {
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
     color: var(--ink-3);
     font-weight: 400;
-  }
-
-  .hud-empty {
-    max-width: 52ch;
-    color: var(--ink-3);
-    font-size: var(--t-sm);
   }
 
   .hud .track {
     position: relative;
     height: 1.25rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.1rem;
     border-radius: var(--r-pill);
     background: var(--subtle-2);
   }
@@ -184,12 +172,13 @@
   .hud .fill {
     inset: 0 auto 0 0;
     border-radius: var(--r-pill);
-    background: linear-gradient(90deg, var(--primary-soft), var(--primary));
+    background: var(--blue-400);
     transition: width 0.5s var(--ease);
   }
 
+  /* Over the target: darker and hatched, so it reads without a warning hue. */
   .hud .fill.late {
-    background: linear-gradient(90deg, var(--red-soft), var(--red));
+    background: repeating-linear-gradient(-45deg, var(--blue-900) 0 6px, var(--blue-700) 6px 12px);
   }
 
   .hud .seg-tool {
@@ -197,7 +186,7 @@
     bottom: 4px;
     min-width: 4px;
     border-radius: var(--r-pill);
-    background: var(--sky);
+    background: var(--violet-700);
     box-shadow: 0 0 0 1.5px var(--card);
   }
 
@@ -207,7 +196,7 @@
     height: 0.75rem;
     translate: -50% -50%;
     rotate: 45deg;
-    background: var(--amber);
+    background: var(--violet-300);
     border: 2px solid var(--card);
   }
 
@@ -215,7 +204,7 @@
     top: -3px;
     bottom: -3px;
     width: 0;
-    border-left: 2px dashed var(--ink-2);
+    border-left: 2px dashed var(--ink);
   }
 
   .hud .mark-target i {
@@ -232,7 +221,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
-    gap: var(--s-2) var(--s-5);
+    gap: var(--s-3) var(--s-5);
   }
 
   .hud .stats dt {
@@ -253,9 +242,9 @@
     border-radius: 2px;
   }
 
-  .hud .stats .key dt::before { background: var(--primary); }
-  .hud .stats .ack dt::before { background: var(--amber); rotate: 45deg; }
-  .hud .stats .tool dt::before { background: var(--sky); }
+  .hud .stats .key dt::before { background: var(--blue-400); }
+  .hud .stats .ack dt::before { background: var(--violet-300); rotate: 45deg; }
+  .hud .stats .tool dt::before { background: var(--violet-700); }
 
   .hud .stats dd {
     font-size: var(--t-sm);
@@ -271,9 +260,15 @@
     color: var(--primary-ink);
   }
 
+  .hud-history {
+    margin-top: var(--s-5);
+  }
+
   .hud-history h3 {
     margin-bottom: var(--s-2);
+    font-family: var(--font-body);
     font-size: var(--t-sm);
+    letter-spacing: 0;
   }
 
   .hud-table {
@@ -290,7 +285,7 @@
 
   .hud-table th,
   .hud-table td {
-    padding: 0.4rem 0.6rem;
+    padding: 0.5rem 0.7rem;
     text-align: left;
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
@@ -308,7 +303,7 @@
   }
 
   .hud-table td.q {
-    max-width: 14rem;
+    max-width: 16rem;
     overflow: hidden;
     text-overflow: ellipsis;
   }

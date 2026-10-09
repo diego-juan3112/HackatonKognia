@@ -6,7 +6,7 @@
  * («Fusión»). A failed analysis is always "uncertain", never a stale label.
  */
 import affectMocks from "../../mocks/affect.json";
-import { API_URL, USING_MOCKS } from "./api";
+import { apiFetch, USING_MOCKS } from "./api";
 import type { AffectEntry } from "./store";
 import type { AffectEstimate, Emotion, Sentiment, StateHint, StyleDecision, StyleId } from "./types";
 
@@ -43,8 +43,41 @@ export interface AnalyzeInput {
   turn_id: string;
   state_version: number;
   t: number;
-  /** Voice analysis only runs with explicit consent (R-26). */
+  /** Voice analysis only runs with consent (R-26); the audio clip is sent only then. */
   voiceConsent: boolean;
+  /** Session-clock bounds of the utterance. */
+  t_start?: number;
+  t_end?: number;
+  /** Observable facts about the turn (e.g. it interrupted the agent, it was a correction). */
+  signals?: Record<string, unknown>;
+  /** WAV clip of the utterance, base64. Only with consent; never stored. */
+  audioWavB64?: string | null;
+  /** Up to 3 previous estimates: the backend keeps no state. */
+  affectHistory?: AffectEstimate[];
+  tonePreference?: string;
+  currentStyle?: StyleDecision;
+  turnIndex?: number;
+}
+
+type ChannelReading = Pick<AffectEstimate, "sentiment" | "emotion" | "state_hint">;
+
+function channel(v: unknown): ChannelReading | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const r = v as Partial<ChannelReading>;
+  return r.sentiment && r.emotion && r.state_hint ? { sentiment: r.sentiment, emotion: r.emotion, state_hint: r.state_hint } : undefined;
+}
+
+function styleFrom(v: unknown, turnIndex: number): StyleDecision | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const s = v as Partial<StyleDecision>;
+  if (!s.style || !(s.style in DIRECTIVES)) return undefined;
+  return {
+    style: s.style,
+    directives: Array.isArray(s.directives) ? s.directives.filter((d): d is string => typeof d === "string") : DIRECTIVES[s.style],
+    reason: typeof s.reason === "string" ? s.reason : "",
+    source: s.source === "preference" ? "preference" : "inferred",
+    applies_from_turn: typeof s.applies_from_turn === "number" ? s.applies_from_turn : turnIndex + 1,
+  };
 }
 
 function uncertain(input: AnalyzeInput, ms: number | null): AffectEntry {
@@ -100,21 +133,46 @@ export async function analyze(input: AnalyzeInput): Promise<AffectEntry> {
   };
 }
 
+/**
+ * `POST /analysis/utterance` (JSON). The backend is stateless, so the history, the
+ * tone preference and the style in force travel with each call. It answers the
+ * fused estimate, the per-channel readings and the style for the next turn.
+ */
 async function analyzeRemote(input: AnalyzeInput): Promise<AffectEntry> {
   const started = performance.now();
+  const turnIndex = input.turnIndex ?? 1;
   try {
-    // The audio clip (MicTap slice) is attached by the real engines; text-only for now.
-    const res = await fetch(`${API_URL}/analysis/utterance`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ turn_id: input.turn_id, state_version: input.state_version, text: input.text }),
-      signal: AbortSignal.timeout(3000),
-    });
+    const body: Record<string, unknown> = {
+      turn_id: input.turn_id,
+      state_version: input.state_version,
+      text: input.text,
+      t_start: input.t_start ?? input.t,
+      t_end: input.t_end ?? input.t,
+      signals: input.signals ?? {},
+      voice_consent: input.voiceConsent,
+      affect_history: (input.affectHistory ?? []).slice(-3),
+      tone_preference: input.tonePreference ?? "neutral",
+      current_style: input.currentStyle ?? null,
+      turn_index: turnIndex,
+    };
+    if (input.voiceConsent && input.audioWavB64) body.audio_wav_b64 = input.audioWavB64;
+    const res = await apiFetch("/analysis/utterance", { method: "POST", body: JSON.stringify(body) }, 5000);
     if (!res.ok) throw new Error(String(res.status));
-    const body = (await res.json()) as { affect?: AffectEstimate } & Partial<AffectEstimate>;
-    const estimate = (body.affect ?? body) as AffectEstimate;
+    const parsed = (await res.json()) as { affect?: Record<string, unknown>; style?: unknown } & Record<string, unknown>;
+    const raw = (parsed.affect ?? parsed) as Record<string, unknown>;
+    const estimate = raw as unknown as AffectEstimate;
     if (!estimate.sentiment) throw new Error("bad shape");
-    return { utterance_id: input.utterance_id, text: input.text, t: input.t, estimate, analysis_ms: Math.round(performance.now() - started) };
+    const text = channel(raw.text_estimate);
+    const voice = channel(raw.voice_estimate);
+    return {
+      utterance_id: input.utterance_id,
+      text: input.text,
+      t: input.t,
+      estimate,
+      channels: text || voice ? { ...(text ? { text } : {}), ...(voice ? { voice } : {}) } : undefined,
+      style: styleFrom(parsed.style, turnIndex),
+      analysis_ms: Math.round(performance.now() - started),
+    };
   } catch {
     return uncertain(input, null);
   }

@@ -67,6 +67,8 @@ export interface AffectEntry {
   /** Per-channel readings shown side by side when they disagree. */
   channels?: { text?: Pick<AffectEstimate, "sentiment" | "emotion" | "state_hint">; voice?: Pick<AffectEstimate, "sentiment" | "emotion" | "state_hint"> };
   analysis_ms: number | null;
+  /** Style decided by the backend analyst for the next turn, when it returns one. */
+  style?: StyleDecision;
 }
 
 export interface TurnMetrics {
@@ -115,6 +117,8 @@ export interface ConsoleState {
   lastError: ErrorPayload | null;
   voiceAnalysis: boolean;
   voiceMode: VoiceMode;
+  /** Voices the backend offers (`GET /health` → `voice_modes`, docs/08 §3). */
+  voiceModes: VoiceMode[];
   speakingKind: SpeechKind | null;
 }
 
@@ -147,13 +151,16 @@ function initialState(): ConsoleState {
     turns: [],
     notices: [],
     lastError: null,
-    voiceAnalysis: false,
+    // On by default (team decision); the switch turns it off. Audio is never stored (R-26).
+    voiceAnalysis: true,
     voiceMode: "engine",
+    voiceModes: ["engine"],
     speakingKind: null,
   };
 }
 
 let state: ConsoleState = initialState();
+const seenEvents = new Set<string>();
 const listeners = new Set<Listener>();
 let pending: Set<Slice> | null = null;
 
@@ -221,9 +228,12 @@ function addNotice(kind: Notice["kind"], text: string, t: number): void {
 
 const ENGINE_LABEL: Record<EngineId, string> = { openai: "OpenAI Realtime", gemini: "Gemini Live" };
 
+const isEngine = (v: unknown): v is EngineId => v === "openai" || v === "gemini";
+
 function sessionText(p: SessionPayload): string {
+  if (p.event === "voice_changed") return `Voz cambiada a ${p.to === "cloned" ? "la voz clonada" : "la del motor"} (${p.reason}).`;
   if (p.event === "expiring") return `La sesión está por vencer: se renovará entre turnos (${p.reason}).`;
-  if (p.event === "switched") return `Sesión renovada: motor cambiado a ${p.to ? ENGINE_LABEL[p.to] : "otro motor"} (${p.reason}). No se repitió ninguna consulta.`;
+  if (p.event === "switched") return `Sesión renovada: motor cambiado a ${isEngine(p.to) ? ENGINE_LABEL[p.to] : "otro motor"} (${p.reason}). No se repitió ninguna consulta.`;
   return `Sesión renovada con el mismo motor (${p.reason}).`;
 }
 
@@ -258,8 +268,12 @@ const handlers: { [K in keyof EngineEvents]: (ev: Extract<AnyEngineEvent, { type
       };
       state.utterances.push(u);
     } else {
+      // Interrupted: anything that still arrives for that generation is dropped (docs/08 §6.5).
+      if (u.role === "agent" && u.delivered_text !== undefined) return [];
       u.text = p.text;
       u.final = p.final;
+      // A question echoed before the engine took it gets its turn when the engine opens one.
+      if (u.turn_id === null) u.turn_id = ev.turn_id;
       u.t_end = p.t_end;
       if (p.speaker) u.speaker = p.speaker;
     }
@@ -306,12 +320,24 @@ const handlers: { [K in keyof EngineEvents]: (ev: Extract<AnyEngineEvent, { type
 
   speech(ev) {
     state.speakingKind = ev.payload.phase === "start" ? ev.payload.kind : null;
+    // A real engine only learns that a phrase was an acknowledgement when the tool call
+    // follows it, so the kind of an utterance already on screen can still change.
+    const u = state.utterances.find((x) => x.role === "agent" && x.generation_id === ev.payload.generation_id);
+    if (u && u.kind !== ev.payload.kind) {
+      u.kind = ev.payload.kind;
+      return ["status", "transcript"];
+    }
     return ["status"];
   },
 
   interrupted(ev) {
     const u = state.utterances.find((x) => x.generation_id === ev.payload.generation_id && x.role === "agent");
-    if (u) u.delivered_text = ev.payload.delivered_text;
+    if (u) {
+      u.delivered_text = ev.payload.delivered_text;
+      u.final = true;
+    }
+    // No `speech stop` follows an interruption: the generation ends here.
+    state.speakingKind = null;
     const turn = turnFor(ev.turn_id);
     if (turn) turn.interrupted_at = ev.t;
     return ["transcript"];
@@ -335,8 +361,9 @@ const handlers: { [K in keyof EngineEvents]: (ev: Extract<AnyEngineEvent, { type
 
   session(ev) {
     const p = ev.payload;
-    if (p.event === "switched" && p.to) state.engine = p.to;
-    if (p.event !== "expiring") {
+    if (p.event === "switched" && isEngine(p.to)) state.engine = p.to;
+    if (p.event === "voice_changed" && (p.to === "engine" || p.to === "cloned")) state.voiceMode = p.to;
+    if (p.event === "renewed" || p.event === "switched") {
       const turn = turnFor(ev.turn_id) ?? state.turns[state.turns.length - 1];
       if (turn) turn.attempts = Math.max(turn.attempts, p.attempt + 1);
     }
@@ -354,6 +381,13 @@ const handlers: { [K in keyof EngineEvents]: (ev: Extract<AnyEngineEvent, { type
 /** Folds one engine event into the state. */
 export function dispatch(ev: AnyEngineEvent): void {
   if (ev.conversation_id !== state.conversation_id) return; // late event from a previous session
+  // A re-sent event keeps its event_id (docs/08 §2): it is folded only once.
+  if (seenEvents.has(ev.event_id)) return;
+  seenEvents.add(ev.event_id);
+  if (seenEvents.size > 4000) {
+    const oldest = seenEvents.values().next().value;
+    if (oldest !== undefined) seenEvents.delete(oldest);
+  }
   state.state_version = Math.max(state.state_version, ev.state_version);
   const handler = handlers[ev.type] as (e: AnyEngineEvent) => Slice[];
   notify(...handler(ev));
@@ -362,12 +396,21 @@ export function dispatch(ev: AnyEngineEvent): void {
 // ── Mutations that do not come from the engine ───────────────────────────────
 
 export function beginSession(conversation_id: string, engine: EngineId, model: string, simulated: boolean): void {
-  const keep = { voiceAnalysis: state.voiceAnalysis, voiceMode: state.voiceMode };
+  const keep = { voiceAnalysis: state.voiceAnalysis, voiceMode: state.voiceMode, voiceModes: state.voiceModes };
+  seenEvents.clear();
   state = { ...initialState(), ...keep, running: true, conversation_id, engine, model, simulated };
   notify("reset");
 }
 
 export function endSession(): void {
+  // Nothing else will arrive: close every partial so no bubble stays "writing" (docs/08 §10).
+  let closed = false;
+  for (const u of state.utterances) {
+    if (u.final) continue;
+    u.final = true;
+    closed = true;
+  }
+  if (closed) notify("transcript");
   state.running = false;
   state.status = "idle";
   state.speakingKind = null;
@@ -376,7 +419,7 @@ export function endSession(): void {
 
 export function reset(): void {
   // Engine and voice choices are settings, not conversation state.
-  const keep = { engine: state.engine, model: state.model, simulated: state.simulated, voiceMode: state.voiceMode };
+  const keep = { engine: state.engine, model: state.model, simulated: state.simulated, voiceMode: state.voiceMode, voiceModes: state.voiceModes };
   state = { ...initialState(), ...keep };
   notify("reset");
 }
@@ -400,6 +443,13 @@ export function setVoiceAnalysis(on: boolean): void {
 
 export function setVoiceMode(mode: VoiceMode): void {
   state.voiceMode = mode;
+  notify("meta");
+}
+
+/** Voices announced by the backend; a mode that is no longer offered falls back to the engine voice. */
+export function setVoiceModes(modes: VoiceMode[]): void {
+  state.voiceModes = modes.includes("engine") ? modes : ["engine", ...modes];
+  if (!state.voiceModes.includes(state.voiceMode)) state.voiceMode = "engine";
   notify("meta");
 }
 

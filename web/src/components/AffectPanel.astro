@@ -1,15 +1,16 @@
 ---
 /**
- * Affect and style (F-08, F-09; docs/10 §6): per-utterance estimate, valence
- * line, text/voice discrepancy and the style in force with its reason.
- * Everything here is labelled as an estimate (R-26).
+ * Emotions and style, live (F-08, F-09; docs/10 §6): the latest estimate
+ * (emotion, sentiment, state, method), the valence line per utterance, the
+ * text/voice discrepancy and the style in force with its reason.
+ * Everything here is an estimate (R-26).
  */
 ---
 
-<section class="affect" id="affect" aria-labelledby="affect-title">
-  <header class="pane-head">
-    <h2 id="affect-title">Afecto y estilo</h2>
-    <p>Estimaciones de cómo suena la persona. No son un diagnóstico y nunca cambian los datos.</p>
+<section class="card board-card affect" id="affect" data-testid="affect-panel" data-section="emociones" aria-labelledby="affect-title">
+  <header class="board-head">
+    <h2 id="affect-title">Emociones en vivo</h2>
+    <p>Estimaciones, no un diagnóstico.</p>
   </header>
   <div class="affect-body" id="affect-body" aria-live="polite"></div>
 </section>
@@ -19,11 +20,7 @@
   import { valence, type AffectEntry, type ConsoleState } from "../voice/store";
   import type { AffectMethod, Sentiment, StyleId } from "../voice/types";
 
-  const METHOD: Record<AffectMethod, string> = {
-    text: "estimación del texto",
-    voice: "estimación de la voz",
-    fused: "estimación combinada (texto y voz)",
-  };
+  const METHOD: Record<AffectMethod, string> = { text: "texto", voice: "voz", fused: "texto y voz" };
 
   const SENTIMENT: Record<Sentiment, string> = {
     positive: "positivo",
@@ -34,11 +31,11 @@
 
   const STYLE: Record<StyleId, string> = { directo: "Directo", calido: "Cálido", didactico: "Didáctico", neutro: "Neutro" };
 
-  const W = 320;
-  const H = 76;
+  const W = 360;
+  const H = 96;
   const PAD_L = 62;
   const PAD_R = 12;
-  const Y = { 1: 14, 0: 38, "-1": 62 } as const;
+  const Y = { 1: 16, 0: 48, "-1": 80 } as const;
   const yOf = (v: number): number => (v > 0 ? Y[1] : v < 0 ? Y["-1"] : Y[0]);
 
   /** Valence line: +1, 0, −1 per utterance; an uncertain reading leaves a gap. */
@@ -57,24 +54,27 @@
       d += `${pen ? "L" : "M"}${x(i).toFixed(1)} ${yOf(v)} `;
       pen = true;
       const cls = v > 0 ? "pos" : v < 0 ? "neg" : "neu";
-      dots += `<circle class="${cls}" cx="${x(i).toFixed(1)}" cy="${yOf(v)}" r="${i === n - 1 ? 5 : 3.5}"/>`;
+      dots += `<circle class="${cls}" cx="${x(i).toFixed(1)}" cy="${yOf(v)}" r="${i === n - 1 ? 5.5 : 3.5}"/>`;
     });
     const summary = entries
       .slice(-12)
       .map((e) => SENTIMENT[e.estimate.sentiment])
       .join(", ");
-    return `<svg class="valence" viewBox="0 0 ${W} ${H}" role="img" aria-label="Línea de valencia por intervención: ${esc(summary)}">
-      <g class="grid">
-        <line x1="${PAD_L}" x2="${W - PAD_R}" y1="${Y[1]}" y2="${Y[1]}"/>
-        <line x1="${PAD_L}" x2="${W - PAD_R}" y1="${Y[0]}" y2="${Y[0]}"/>
-        <line x1="${PAD_L}" x2="${W - PAD_R}" y1="${Y["-1"]}" y2="${Y["-1"]}"/>
-        <text x="0" y="${Y[1] + 4}">positivo</text>
-        <text x="0" y="${Y[0] + 4}">neutral</text>
-        <text x="0" y="${Y["-1"] + 4}">negativo</text>
-      </g>
-      <path d="${d}"/>
-      ${dots}
-    </svg>`;
+    return `<figure class="valence-fig">
+      <figcaption>Valencia por intervención</figcaption>
+      <svg class="valence" viewBox="0 0 ${W} ${H}" role="img" aria-label="Línea de valencia por intervención: ${esc(summary)}">
+        <g class="grid">
+          <line x1="${PAD_L}" x2="${W - PAD_R}" y1="${Y[1]}" y2="${Y[1]}"/>
+          <line x1="${PAD_L}" x2="${W - PAD_R}" y1="${Y[0]}" y2="${Y[0]}"/>
+          <line x1="${PAD_L}" x2="${W - PAD_R}" y1="${Y["-1"]}" y2="${Y["-1"]}"/>
+          <text x="0" y="${Y[1] + 4}">positivo</text>
+          <text x="0" y="${Y[0] + 4}">neutral</text>
+          <text x="0" y="${Y["-1"] + 4}">negativo</text>
+        </g>
+        <path d="${d}"/>
+        ${dots}
+      </svg>
+    </figure>`;
   }
 
   function current(e: AffectEntry, s: ConsoleState): string {
@@ -83,21 +83,21 @@
     const cues = est.cues.map((c) => `<li>${esc(c)}</li>`).join("");
     const split =
       est.discrepancy && e.channels?.text && e.channels.voice
-        ? `<div class="split">
-            <p class="tag tag-warn">${icon("split")} texto y voz no coinciden</p>
+        ? `<div class="split" data-testid="affect-discrepancy">
+            <p class="split-title">${icon("split")} Texto y voz no coinciden</p>
             <dl>
-              <dt>Por el texto</dt><dd>${esc(e.channels.text.emotion)}, ${SENTIMENT[e.channels.text.sentiment]}</dd>
-              <dt>Por la voz</dt><dd>${esc(e.channels.voice.emotion)}, ${SENTIMENT[e.channels.voice.sentiment]}</dd>
+              <dt>Texto</dt><dd>${esc(e.channels.text.emotion)}, ${SENTIMENT[e.channels.text.sentiment]}</dd>
+              <dt>Voz</dt><dd>${esc(e.channels.voice.emotion)}, ${SENTIMENT[e.channels.voice.sentiment]}</dd>
             </dl>
           </div>`
         : "";
-    return `<div class="reading sent-${est.sentiment}">
-      <p class="about">Intervención${turn ? ` del turno ${turn.n}` : ""}: «${esc(e.text)}»</p>
+    return `<div class="reading sent-${est.sentiment}" data-testid="affect-reading" data-sentiment="${est.sentiment}" data-method="${est.method}" data-discrepancy="${est.discrepancy}">
       <p class="emotion">${esc(est.emotion)}</p>
+      <p class="about">${turn ? `Turno ${turn.n}: ` : ""}«${esc(e.text)}»</p>
       <dl class="facts">
-        <dt>Sentimiento</dt><dd>${SENTIMENT[est.sentiment]}</dd>
-        <dt>Estado</dt><dd>${esc(est.state_hint)}</dd>
-        <dt>Método</dt><dd>${METHOD[est.method]}</dd>
+        <div><dt>Sentimiento</dt><dd>${SENTIMENT[est.sentiment]}</dd></div>
+        <div><dt>Estado</dt><dd>${esc(est.state_hint)}</dd></div>
+        <div><dt>Método</dt><dd>${METHOD[est.method]}</dd></div>
       </dl>
       ${split}
       ${cues ? `<ul class="cues" aria-label="Señales observadas">${cues}</ul>` : ""}
@@ -106,13 +106,13 @@
 
   function style(s: ConsoleState): string {
     const st = s.style;
-    const origin = st.source === "preference" ? "preferencia explícita" : st.style === "neutro" ? "por defecto" : "inferido";
+    const origin = st.source === "preference" ? "preferencia" : st.style === "neutro" ? "por defecto" : "inferido";
     const signal = s.styleSignal
-      ? `<p class="signal">${s.styleSignal.count} de ${s.styleSignal.needed} señales seguidas de ${esc(s.styleSignal.hint)}: el estilo todavía no cambia.</p>`
+      ? `<p class="signal">${s.styleSignal.count} de ${s.styleSignal.needed} señales de ${esc(s.styleSignal.hint)}: el estilo aún no cambia.</p>`
       : "";
-    return `<div class="style style-${st.style}">
-      <p class="style-name"><span>Estilo vigente</span> <strong>${STYLE[st.style]}</strong> <span class="tag ${st.source === "preference" ? "tag-warn" : "tag-quiet"}">${origin}</span></p>
-      <p class="why">${esc(st.reason)} Aplica desde el turno ${st.applies_from_turn}.</p>
+    return `<div class="style style-${st.style}" data-testid="style" data-style="${st.style}" data-source="${st.source}">
+      <p class="style-name"><span>Estilo vigente</span> <strong>${STYLE[st.style]}</strong> <span class="tag ${st.source === "preference" ? "tag-accent" : "tag-quiet"}">${origin}</span></p>
+      <p class="why">${esc(st.reason)} Desde el turno ${st.applies_from_turn}.</p>
       ${signal}
     </div>`;
   }
@@ -124,7 +124,7 @@
       const last = s.affect[s.affect.length - 1];
       const reading = last
         ? current(last, s) + line(s.affect)
-        : `<p class="affect-empty">Cuando hables, aquí aparece una estimación por intervención${s.voiceAnalysis ? ", a partir del texto y de la voz" : ", a partir del texto. Con tu permiso también se estima el tono de voz"}.</p>`;
+        : `<p class="board-empty">Aquí aparece cómo suena cada intervención, a partir del ${s.voiceAnalysis ? "texto y de la voz" : "texto"}.</p>`;
       body.innerHTML = reading + style(s);
     });
   });
@@ -133,45 +133,33 @@
 <style is:global>
   .affect-body {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
     align-items: start;
-    gap: var(--s-4) var(--s-5);
+    gap: var(--s-5);
   }
 
   .affect-body > .style,
-  .affect-body > .affect-empty {
+  .affect-body > .board-empty {
     grid-column: 1 / -1;
   }
 
-  .affect-empty {
-    color: var(--ink-3);
-    font-size: var(--t-sm);
-  }
-
   .reading {
-    --tone: var(--ink-2);
+    --tone: var(--primary-ink);
     display: grid;
-    gap: var(--s-2);
+    gap: var(--s-3);
+    min-width: 0;
   }
 
-  .reading.sent-positive { --tone: var(--green-ink); }
-  .reading.sent-negative { --tone: var(--red-ink); }
+  .reading.sent-positive { --tone: var(--blue-700); }
+  .reading.sent-negative { --tone: var(--violet-700); }
   .reading.sent-uncertain { --tone: var(--ink-3); }
-
-  .reading .about {
-    color: var(--ink-3);
-    font-size: var(--t-xs);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
   .reading .emotion {
     font-family: var(--font-display);
     font-size: var(--t-xl);
     font-weight: 700;
     letter-spacing: -0.03em;
-    line-height: 0.95;
+    line-height: 1;
     color: var(--tone);
   }
 
@@ -179,29 +167,54 @@
     text-transform: uppercase;
   }
 
-  .reading .facts,
-  .reading .split dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.15rem var(--s-3);
-    font-size: var(--t-sm);
-  }
-
-  .reading dt {
+  .reading .about {
     color: var(--ink-3);
+    font-size: var(--t-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .reading dd {
-    font-weight: 600;
+  .reading .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-5);
+  }
+
+  .reading .facts dt,
+  .reading .split dt {
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .reading .facts dd,
+  .reading .split dd {
+    font-size: var(--t-sm);
+    font-weight: 650;
   }
 
   .reading .split {
     display: grid;
     gap: var(--s-2);
-    justify-items: start;
-    padding: var(--s-3);
+    padding: var(--s-3) var(--s-4);
     border-radius: var(--r-md);
-    background: var(--amber-soft);
+    background: var(--accent-soft);
+  }
+
+  .reading .split-title {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    color: var(--accent-ink);
+    font-size: var(--t-sm);
+    font-weight: 700;
+  }
+
+  .reading .split dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    gap: 0.15rem var(--s-3);
   }
 
   .reading .cues {
@@ -211,10 +224,21 @@
   }
 
   .reading .cues li {
-    padding: 0.1rem 0.55rem;
+    padding: 0.1rem 0.6rem;
     border-radius: var(--r-pill);
     background: var(--subtle-2);
     color: var(--ink-2);
+    font-size: var(--t-xs);
+  }
+
+  .valence-fig {
+    display: grid;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+
+  .valence-fig figcaption {
+    color: var(--ink-3);
     font-size: var(--t-xs);
   }
 
@@ -238,7 +262,7 @@
 
   .valence path {
     fill: none;
-    stroke: var(--ink-2);
+    stroke: var(--blue-400);
     stroke-width: 2;
     stroke-linejoin: round;
     stroke-linecap: round;
@@ -249,15 +273,16 @@
     stroke-width: 2;
   }
 
-  .valence .pos { fill: var(--green); }
-  .valence .neu { fill: var(--ink-2); }
-  .valence .neg { fill: var(--red); }
+  /* Height already encodes the valence; tone repeats it: dark blue up, violet down. */
+  .valence .pos { fill: var(--blue-700); }
+  .valence .neu { fill: var(--blue-400); }
+  .valence .neg { fill: var(--violet-700); }
 
   .affect .style {
     display: grid;
     gap: var(--s-1);
-    padding-top: var(--s-3);
-    border-top: 1px dashed var(--border-strong);
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--border);
   }
 
   .affect .style-name {
@@ -276,17 +301,18 @@
   }
 
   .affect .style-directo .style-name strong {
-    color: var(--primary-ink);
+    color: var(--accent-ink);
   }
 
   .affect .why,
   .affect .signal {
+    max-width: 62ch;
     color: var(--ink-2);
     font-size: var(--t-sm);
     line-height: 1.4;
   }
 
   .affect .signal {
-    color: var(--violet-ink);
+    color: var(--accent-ink);
   }
 </style>

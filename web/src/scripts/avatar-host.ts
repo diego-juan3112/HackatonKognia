@@ -9,14 +9,21 @@
  *
  * Expected module shape (src/avatar/index.ts):
  *   mountAvatar(canvas, opts) => Promise<AvatarHandle>
- *   AvatarHandle: setState(state), setMouthLevel(0..1), resetCamera(), dispose()
+ *   AvatarHandle: setState(state), setMouthLevel(0..1), attachAnalyser?(node), resetCamera(), dispose()
+ *
+ * Lip-sync source: with a real engine the mouth follows the spectrum of the audio
+ * actually played (the player's AnalyserNode); with the scripted double there is
+ * no audio, so a synthetic pattern follows the transcript cadence.
  */
+import { getPlayer } from "../voice/audio/player";
 import { getState, subscribe } from "../voice/store";
 import type { EngineStatus } from "../voice/types";
 
 export interface AvatarHandle {
   setState(state: EngineStatus): void;
   setMouthLevel(level: number): void;
+  /** Drives the mouth from the audio being played; null detaches it. */
+  attachAnalyser?(node: AnalyserNode | null): void;
   resetCamera(): void;
   dispose(): void;
 }
@@ -39,6 +46,7 @@ export function hostAvatar(stage: HTMLElement, canvas: HTMLCanvasElement): Avata
   let disposed = false;
   let mouthTimer: ReturnType<typeof setInterval> | undefined;
   let pulse = 0;
+  let analyserOn = false;
 
   const safely = (fn: () => void): void => {
     try {
@@ -48,11 +56,25 @@ export function hostAvatar(stage: HTMLElement, canvas: HTMLCanvasElement): Avata
     }
   };
 
-  // No audio yet (the engine is a double): the mouth follows the transcript cadence.
+  /**
+   * Real engine running → the avatar reads the player's analyser. The player (and its
+   * AudioContext) is only touched once a session is running, i.e. after a user gesture.
+   */
+  const syncAnalyser = (): boolean => {
+    const s = getState();
+    const want = s.running && !s.simulated && typeof handle?.attachAnalyser === "function";
+    if (want === analyserOn) return analyserOn;
+    analyserOn = want;
+    safely(() => handle?.attachAnalyser?.(want ? getPlayer().analyser : null));
+    return analyserOn;
+  };
+
+  // Scripted double (no audio): the mouth follows the transcript cadence.
   const mouth = (speaking: boolean): void => {
     clearInterval(mouthTimer);
     mouthTimer = undefined;
     if (!handle) return;
+    if (syncAnalyser()) return; // the analyser drives the mouth, frame by frame
     if (!speaking) {
       safely(() => handle?.setMouthLevel(0));
       return;
@@ -68,7 +90,7 @@ export function hostAvatar(stage: HTMLElement, canvas: HTMLCanvasElement): Avata
   const unsubscribe = subscribe((state, slices) => {
     if (!handle) return;
     if (slices.has("transcript")) pulse = 1;
-    if (slices.has("status") || slices.has("reset")) {
+    if (slices.has("status") || slices.has("reset") || slices.has("meta")) {
       safely(() => handle?.setState(state.status));
       mouth(state.status === "speaking");
     }

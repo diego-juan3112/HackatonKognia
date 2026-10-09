@@ -62,12 +62,19 @@ export interface KeyedItem {
   key: string;
   cls: string;
   html: string;
+  /** Stable hook for QA (`data-testid`). */
+  testid?: string;
 }
+
+const FOCUSABLE = "a[href], button, input, select, textarea, summary, [tabindex]";
 
 /**
  * Keyed list update: only items whose markup changed are touched. A full
  * innerHTML swap on every partial would close open <details> and swallow
  * clicks on buttons inside older messages.
+ *
+ * Keyboard focus survives a repaint: when the focused control is inside an item
+ * whose markup is replaced, focus goes back to the control at the same position.
  */
 export function reconcile(list: HTMLElement, items: KeyedItem[], tag = "li"): void {
   const existing = new Map<string, HTMLElement>();
@@ -85,10 +92,17 @@ export function reconcile(list: HTMLElement, items: KeyedItem[], tag = "li"): vo
       el.dataset.key = item.key;
     }
     if (el.className !== item.cls) el.className = item.cls;
+    if (item.testid && el.dataset.testid !== item.testid) el.dataset.testid = item.testid;
     if (rendered.get(el) !== item.html) {
       rendered.set(el, item.html);
+      const active = document.activeElement;
+      const focusIndex = active && el.contains(active) ? Array.from(el.querySelectorAll(FOCUSABLE)).indexOf(active) : -1;
       // Callers build `html` with esc() around every dynamic value.
       el.innerHTML = item.html;
+      if (focusIndex >= 0) {
+        const again = el.querySelectorAll<HTMLElement>(FOCUSABLE);
+        (again[focusIndex] ?? again[again.length - 1])?.focus({ preventScroll: true });
+      }
     }
     if (el !== cursor) list.insertBefore(el, cursor);
     else cursor = cursor.nextElementSibling;

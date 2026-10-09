@@ -8,7 +8,7 @@
  */
 import briefMock from "../../mocks/brief.json";
 import toolMocks from "../../mocks/tool-results.json";
-import type { CacheStatus, DatasetBrief, EvidenceEnvelope, ToolCallPayload } from "./types";
+import type { CacheStatus, DatasetBrief, EvidenceEnvelope, ToolCallPayload, VoiceMode } from "./types";
 
 export const API_URL: string = (import.meta.env.PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 export const USING_MOCKS: boolean = API_URL === "";
@@ -17,10 +17,17 @@ export const USING_MOCKS: boolean = API_URL === "";
 const TOOL_DEADLINE_MS = 6000;
 const FRESH_WINDOW_MS = 60_000;
 
+/**
+ * Canonical state sent with every tool call (docs/08 §5.1, docs/10 §4). The backend
+ * keeps no state: what it needs to resolve a follow-up travels here.
+ */
 export interface ToolContext {
   conversation_id: string;
   turn_id: string;
   state_version: number;
+  confirmed_filters?: Record<string, unknown>;
+  selected_site_keys?: string[];
+  [key: string]: unknown;
 }
 
 export interface RunToolOptions {
@@ -44,7 +51,8 @@ async function ensureSession(): Promise<string | null> {
   return sessionToken;
 }
 
-async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = TOOL_DEADLINE_MS): Promise<Response> {
+/** Authenticated call to the backend: adds `X-Session-Token` and a deadline. */
+export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = TOOL_DEADLINE_MS): Promise<Response> {
   const token = await ensureSession();
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
@@ -52,6 +60,75 @@ async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = TOOL_D
   const res = await fetch(`${API_URL}${path}`, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) });
   if (res.status === 401) sessionToken = null; // SESSION_EXPIRED: next call asks for a new token
   return res;
+}
+
+// ── Health (docs/08 §3) ──────────────────────────────────────────────────────
+
+/** Voices the backend offers. Without a backend the double can show both; on any failure, only the engine voice. */
+export async function fetchVoiceModes(): Promise<VoiceMode[]> {
+  if (USING_MOCKS) return ["engine", "cloned"];
+  try {
+    const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return ["engine"];
+    const body = (await res.json()) as { voice_modes?: unknown };
+    const modes = Array.isArray(body.voice_modes) ? body.voice_modes.filter((m): m is VoiceMode => m === "engine" || m === "cloned") : [];
+    return modes.includes("engine") ? modes : ["engine", ...modes];
+  } catch {
+    return ["engine"];
+  }
+}
+
+// ── Realtime session (docs/08 §3) ────────────────────────────────────────────
+
+/** Answer of `POST /realtime/session`. The credential stays inside the engine adapter (R-03, R-28). */
+export interface RealtimeSessionGrant {
+  contract?: string;
+  engine: string;
+  model: string;
+  connect: { url: string; protocols?: string[]; token: string; expires_at?: string };
+  config?: {
+    audio?: { input?: { sample_rate?: number }; output?: { sample_rate?: number } };
+    voice?: string;
+    voice_mode?: string;
+  };
+  instructions_version?: string;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** Asks the backend for an ephemeral provider credential. Throws ApiError. */
+export async function requestRealtimeSession(body: Record<string, unknown>): Promise<RealtimeSessionGrant> {
+  if (USING_MOCKS) throw new ApiError(503, "ENGINE_CONNECT_FAILED", "No hay backend configurado (PUBLIC_API_URL).");
+  let res: Response;
+  try {
+    res = await apiFetch("/realtime/session", { method: "POST", body: JSON.stringify(body) }, 10_000);
+    if (res.status === 401) res = await apiFetch("/realtime/session", { method: "POST", body: JSON.stringify(body) }, 10_000);
+  } catch {
+    throw new ApiError(0, "ENGINE_CONNECT_FAILED", "No se pudo contactar la API para pedir la credencial de voz.");
+  }
+  if (!res.ok) {
+    let code = res.status === 429 ? "ENGINE_QUOTA" : "ENGINE_CONNECT_FAILED";
+    let message = `La API respondió ${res.status} al pedir la credencial de voz.`;
+    try {
+      const parsed = (await res.json()) as { error?: { code?: string; message?: string } };
+      if (parsed.error?.code) code = parsed.error.code;
+      if (parsed.error?.message) message = parsed.error.message;
+    } catch {
+      // keep the generic message
+    }
+    throw new ApiError(res.status, code, message);
+  }
+  const grant = (await res.json()) as RealtimeSessionGrant;
+  if (!grant.connect?.url || !grant.connect.token) throw new ApiError(502, "ENGINE_CONNECT_FAILED", "La API devolvió una credencial de voz incompleta.");
+  return grant;
 }
 
 // ── Brief ────────────────────────────────────────────────────────────────────

@@ -3,20 +3,17 @@
  * docs/09 §5 and §8 (evidence envelope, dataset brief) and docs/10 §3, §4, §6
  * (context envelope, canonical state, AffectEstimate, StyleDecision).
  *
- * Contract version: 2026-10-09.1. A change here is a contract change (R-30):
- * update the doc first.
+ * Contract version: 2026-10-09.2 (optional cloned voice, docs/08 §15; additive
+ * over `.1`). A change here is a contract change (R-30): update the doc first.
  */
 
-export const CONTRACT_VERSION = "2026-10-09.1";
+export const CONTRACT_VERSION = "2026-10-09.2";
 
 // ── Engine ───────────────────────────────────────────────────────────────────
 
 export type EngineId = "openai" | "gemini";
 
-/**
- * Which voice speaks: the engine's own, or the cloned voice (Cartesia), which is
- * only available with the OpenAI engine. PROPOSED addition to docs/08 §2.
- */
+/** Who produces the agent's audio: the engine's own voice or the cloned one (docs/08 §15). */
 export type VoiceMode = "engine" | "cloned";
 
 export type EngineStatus =
@@ -30,12 +27,12 @@ export type EngineStatus =
 
 export interface VoiceEngine {
   readonly id: EngineId;
-  connect(opts: { conversationId: string; seed?: ContextEnvelope; style?: StyleDecision; voice?: VoiceMode }): Promise<void>;
+  connect(opts: { conversationId: string; seed?: ContextEnvelope; style?: StyleDecision; voiceMode?: VoiceMode }): Promise<void>;
   disconnect(reason?: string): Promise<void>;
   /** Text mode (F-12). */
   sendText(text: string): void;
-  /** User speech detected or the Stop button. */
-  interrupt(playedMs: number): void;
+  /** User speech detected or the Stop button. The text is only given with the cloned voice (§15.4). */
+  interrupt(playedMs: number, deliveredText?: string): void;
   /** Takes effect from the next turn. */
   applyStyle(style: StyleDecision): void;
   /** After renewing the session or switching engines. */
@@ -132,6 +129,8 @@ export interface SpeechPayload {
   phase: "start" | "stop";
   generation_id: string;
   kind: SpeechKind;
+  /** Absent means "engine". */
+  voice?: VoiceMode;
 }
 
 export interface InterruptedPayload {
@@ -139,6 +138,8 @@ export interface InterruptedPayload {
   played_ms: number;
   /** Only the text aligned with audio that was actually played. */
   delivered_text: string;
+  /** How `delivered_text` was obtained (docs/08 §2, contract `.2`; optional and additive). */
+  delivered_basis?: "engine" | "word_timestamps" | "estimated";
 }
 
 export interface LatencyPayload {
@@ -146,14 +147,18 @@ export interface LatencyPayload {
   t_ack_audio?: number;
   t_tool_start?: number;
   t_tool_end?: number;
+  /** Cloned voice only: first answer text from the engine, first sentence sent to the synthesizer. */
+  t_first_text?: number;
+  t_tts_start?: number;
   t_first_useful_audio?: number;
   t_playback_stop?: number;
 }
 
 export interface SessionPayload {
-  event: "renewed" | "switched" | "expiring";
-  from?: EngineId;
-  to?: EngineId;
+  event: "renewed" | "switched" | "expiring" | "voice_changed";
+  /** EngineId for `renewed`/`switched`; VoiceMode for `voice_changed`. */
+  from?: EngineId | VoiceMode;
+  to?: EngineId | VoiceMode;
   reason: string;
   attempt: number;
 }
@@ -169,6 +174,10 @@ export type ErrorCode =
   | "TOOL_TIMEOUT"
   | "TOOL_INVALID"
   | "PLAYBACK_FAILED"
+  | "SYNTH_UNAVAILABLE"
+  | "SYNTH_CONNECT_FAILED"
+  | "SYNTH_DROPPED"
+  | "SYNTH_QUOTA"
   | "ANALYSIS_UNAVAILABLE";
 
 export interface ErrorPayload {
