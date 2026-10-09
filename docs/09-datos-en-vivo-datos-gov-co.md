@@ -1,6 +1,6 @@
 # Datos en vivo: datos.gov.co (IPS)
 
-Contrato vigente · versión `2026-10-09.1` · dueño: **carril B** ([12](12-guia-de-trabajo-2-personas.md)).
+Contrato vigente · versión `2026-10-09.3` (aditiva sobre la `.2`: cuatro herramientas nuevas y filtro de capacidad en `search_ips`) · dueño: **carril B** ([12](12-guia-de-trabajo-2-personas.md)).
 Decisiones: D-09, D-12 (API en vivo), D-13 (herramientas tipadas y sobre de evidencia).
 Reglas: R-22 (evidencia primero), R-23 (herramientas cerradas), R-25 (recuperación acotada).
 Base de partida: [sdd_ips/02](sdd_ips/02_tool_contracts.md) y [sdd_ips/04](sdd_ips/04_data_and_retrieval.md), adaptados (ver [07](07-reto-01-especificacion.md) §3).
@@ -75,7 +75,7 @@ De ahí el calentamiento, el plazo de 4 s y el reconocimiento hablado previo a c
 | **Nivel** | Vacío en 8.325 de 9.320 IPS: «sin nivel registrado» ≠ nivel 0 ni «sin nivel» inferido |
 | Totales nacionales | Salen de agregados de la fuente, nunca de la primera página ni de un top-k |
 
-## 4. Las 5 herramientas (C-IPS)
+## 4. Las herramientas (C-IPS): 5 base + 4 de agente (contrato `.3`)
 
 El modelo envía **JSON, nunca SoQL**. Campos desconocidos se rechazan. Todos los valores se
 validan contra el léxico (§7) y contra listas cerradas. Salida acotada (≤ 20 filas) y
@@ -84,11 +84,29 @@ consulta con plazo. Un municipio homónimo exige departamento: si no, `status: a
 
 | Herramienta | Entrada | Salida |
 |---|---|---|
-| `search_ips` | `department?`, `municipality?`, `name?`, `nature?` (Pública/Privada/Mixta), `level?` (1/2/3), `limit=5` (≤ 20), `cursor?` | Hasta `limit` sedes: `site_key`, `provider_name`, `site_name`, `municipality`, `department`, `nature`, `level` (o `null`) + `next_cursor` |
+| `search_ips` | `department?`, `municipality?`, `name?`, `nature?` (Pública/Privada/Mixta), `level?` (1/2/3), `capacity_group?`, `capacity_type?` *(.3)*, `limit=5` (≤ 20), `cursor?` | Hasta `limit` sedes: `site_key`, `provider_name`, `site_name`, `municipality`, `department`, `nature`, `level` (o `null`) + `next_cursor`. Con `capacity_group`: solo sedes que **tienen registrada** esa capacidad, con `quantity`, y `NOT_AVAILABILITY` («no significa que esté abierta ni disponible») |
 | `get_ips_details` | `site_key`, `capacity_group?`, `capacity_type?`, `include_contact=false` | La sede y sus capacidades agregadas por grupo/tipo; los campos ausentes salen `null`, nunca inventados |
 | `aggregate_ips` | `metric` ∈ `provider_count` · `site_count` · `capacity_sum`; `filters`; `group_by?` ∈ `department` · `municipality` · `nature` · `level`; `order?`, `top_n?` (≤ 10) | `value` o `groups[{key, value}]`, `unit`, `complete`. `capacity_sum` exige `capacity_group`; sin `capacity_type` se suma el grupo completo y se advierte `MIXED_TYPES` |
 | `compare_ips` *(Should)* | 2–3 `site_key`, `capacity_group`, `capacity_type?` | Cantidades comparables (mismo tipo y corte); lo nulo o ambiguo queda desconocido; una sola consulta por lote |
 | `correct_context` | `target_turn_id`, `expected_state_version`, `field`, `value` | Nuevo `state_version`, evidencia invalidada, filtros confirmados; `invalid`/`STATE_CONFLICT` si la versión no coincide |
+| `verify_registration` *(.3)* | **Uno** de: `name` (+ `department?`/`municipality?`), `site_key`, `provider_code` | `registered`, `provider_code`, `provider_name`, `nature`, `levels`/`level_label` («nivel no registrado»), `municipalities` (≤ 5), `site_count` (≤ 20, `site_count_complete`), `site_keys` (≤ 3). Un consulta (`LIMIT 21`). Si no aparece: `empty` «no aparece registrada con ese nombre en el corte de 2022… no prueba que no exista». Homónimos o varias coincidencias: `ambiguous` (≤ 3), nunca el primero |
+| `area_profile` *(.3)* | `department` o `municipality` (un solo lugar) | IPS por naturaleza (con `share_pct`) y por nivel (`null` = sin nivel registrado), códigos de sede, `beds` (CAMAS), `ambulances` (AMBULANCIAS), `emergency_rooms` (CONSULTORIOS/Urgencias); `derived`: % con nivel registrado, camas por prestador (1 decimal). 6 consultas **en paralelo**, misma SoQL que `aggregate_ips` (comparten caché). `DERIVED_FROM_SOURCE` |
+| `compare_areas` *(.3)* | `areas` (2–3 de `{department?, municipality?}`), `metric` (como `aggregate_ips`), `capacity_group?` (obligatorio en `capacity_sum`), `capacity_type?` | `items[{area, value}]`, `highest`, `comparisons[{higher, lower, difference, ratio, equal}]` calculados en Python. Una consulta por área, en paralelo. Área ambigua: `ambiguous` con `area_index`. `NOT_PER_CAPITA` (cifras absolutas) |
+| `dataset_info` *(.3)* | `topic?` ∈ `all` · `contents` · `limits` · `capabilities` | **Sin consulta.** Qué contiene la fuente (campos, grano, corte), qué **no** contiene y qué puede hacer el asistente. Para explicar límites con verdad («no puedo pedir citas porque esta fuente no las trae») |
+
+**Límites contra el abuso:** ninguna lista pasa de 20 filas; comparaciones de 2–3 elementos; el
+contacto (dirección, teléfono, correo, gerente) solo sale de `get_ips_details` con
+`include_contact=true` y para **una** sede; ninguna herramienta devuelve contactos en bloque.
+
+### Qué puede y qué no puede hacer el agente con esta API
+
+| Puede (siempre con una consulta en vivo registrada) | No puede (la fuente no lo trae) |
+|---|---|
+| Buscar sedes por lugar, nombre, naturaleza, nivel o capacidad instalada | Pedir o consultar citas, ni decir si hay turno |
+| Ver el detalle y la capacidad instalada de una sede | Decir si una cama o servicio está **disponible** hoy, ni si una sede está abierta |
+| Verificar si una IPS está registrada en el corte de 2022 | Afirmar que una IPS no existe: solo que no figura en esta fuente |
+| Contar IPS o códigos de sede y sumar capacidad, con agrupaciones | Horarios, médicos, servicios habilitados en detalle, calidad, precios, EPS o convenios |
+| Perfilar un lugar y comparar 2–3 lugares o sedes, con porcentajes y razones calculadas en Python | Cercanía o rutas (sin coordenadas), cifras por habitante (sin población), datos posteriores a 2022 |
 
 `site_key` = `provider_code:site_code:site_number` (texto). Un `cursor` es opaco (desplazamiento
 firmado). Una lista paginada es **incompleta** hasta agotar el cursor; un agregado exacto sí es
@@ -178,7 +196,9 @@ van en campos delimitados y no se obedece nada que contengan.
 (89% de las IPS sin nivel) · `DISTRICT_AS_DEPARTMENT` (Cali, Barranquilla, Cartagena, Santa Marta y
 Buenaventura figuran como «departamentos» aparte) · `MIXED_TYPES` · `SITE_CODES_NOT_PHYSICAL_SITES` ·
 `NOT_AVAILABILITY` (capacidad instalada, no disponibilidad) · `NULL_NOT_ZERO` · `PARTIAL_RESULT` ·
-`STALE_CACHE` · `FILTER_NORMALIZED` (p. ej. «Valle del Cauca» → «Valle del cauca»).
+`STALE_CACHE` · `FILTER_NORMALIZED` (p. ej. «Valle del Cauca» → «Valle del cauca») · *(.3)*
+`DERIVED_FROM_SOURCE` (porcentajes, diferencias y razones calculados a partir de la fuente) ·
+`NOT_PER_CAPITA` (cifras absolutas; la fuente no trae población).
 
 ## 6. Caché
 
