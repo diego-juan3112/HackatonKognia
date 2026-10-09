@@ -1,0 +1,238 @@
+---
+/**
+ * «API en vivo» (F-11, A-24): every query with its SoQL, time, rows, source,
+ * cutoff, cache badge and a «Reconsultar» button. Also owns the styles of the
+ * evidence markup reused by the chat.
+ */
+---
+
+<section class="api" id="api" aria-labelledby="api-title">
+  <header class="pane-head">
+    <h2 id="api-title">API en vivo</h2>
+    <p id="api-origin"></p>
+  </header>
+  <ol class="api-list" id="api-list" aria-live="polite"></ol>
+</section>
+
+<script>
+  import { bind, byId, panel } from "../scripts/dom";
+  import { evidenceBody } from "../scripts/evidence";
+  import { USING_MOCKS } from "../voice/api";
+
+  panel("api", () => {
+    const list = byId("api-list");
+    const origin = byId("api-origin");
+    if (origin) {
+      origin.textContent = USING_MOCKS
+        ? "Sin backend conectado: son respuestas grabadas de datos.gov.co el 9-oct-2026, no consultas nuevas."
+        : "Cada consulta sale en ese momento a datos.gov.co. Reconsultar la repite sin caché.";
+    }
+    return bind(["tools"], (s) => {
+      if (!list) return;
+      list.innerHTML = s.tools.length
+        ? [...s.tools]
+            .reverse()
+            .map((t) => `<li class="api-item${t.invalidated ? " invalidated" : ""}">${evidenceBody(t, s)}</li>`)
+            .join("")
+        : '<li class="pane-empty">Aquí aparece cada consulta a datos.gov.co: la sentencia SoQL, cuánto tardó, cuántas filas devolvió y con qué corte.</li>';
+    });
+  });
+</script>
+
+<style is:global>
+  .pane-head {
+    padding-bottom: var(--s-3);
+  }
+
+  .pane-head h2 {
+    font-size: var(--t-md);
+  }
+
+  .pane-head p {
+    margin-top: var(--s-1);
+    max-width: 62ch;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+    line-height: 1.45;
+  }
+
+  .pane-empty {
+    max-width: 52ch;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  .api-item {
+    display: grid;
+    gap: var(--s-2);
+    padding: var(--s-4) 0;
+    border-top: 1px solid var(--border);
+    min-width: 0;
+  }
+
+  .api-item .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-2);
+  }
+
+  .api-item .head code {
+    color: var(--primary-ink);
+    font-size: var(--t-sm);
+    font-weight: 700;
+  }
+
+  .api-item .args {
+    color: var(--ink-2);
+    font-size: var(--t-xs);
+  }
+
+  .api-item .soql {
+    margin: 0;
+    padding: var(--s-3);
+    border-radius: var(--r-md);
+    background: #0f1b33;
+    color: #e2e8ff;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .soql .kw { color: #93b4ff; font-weight: 600; }
+  .soql .fn { color: #6ee7b7; }
+  .soql .str { color: #fcd34d; }
+
+  .api-item .meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-4);
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .meta strong {
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  .api-item .value {
+    color: var(--ink-2);
+  }
+
+  .api-item .value strong {
+    font-family: var(--font-display);
+    font-size: var(--t-lg);
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+
+  .api-item .groups {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .api-item .groups li {
+    display: grid;
+    grid-template-columns: minmax(0, 11rem) minmax(2rem, 1fr) 4.2rem;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .groups .k {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+
+  .api-item .groups .bar {
+    height: 0.6rem;
+    border-radius: 3px;
+    background: var(--subtle-2);
+  }
+
+  .api-item .groups .bar i {
+    display: block;
+    height: 100%;
+    min-width: 3px;
+    border-radius: 3px;
+    background: var(--primary);
+  }
+
+  .api-item .groups .v {
+    text-align: right;
+    font-weight: 700;
+  }
+
+  .api-item .unit,
+  .api-item .src {
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    line-height: 1.45;
+  }
+
+  .api-item .warnings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1);
+  }
+
+  .api-item .warnings li {
+    padding: 0.05rem 0.55rem;
+    border-radius: var(--r-pill);
+    background: var(--amber-soft);
+    color: var(--amber-ink);
+    font-size: var(--t-xs);
+    font-weight: 550;
+  }
+
+  .api-item .err {
+    color: var(--red-ink);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .requery {
+    font-size: var(--t-xs);
+    color: var(--ink-2);
+  }
+
+  .api-item .requery.ok {
+    color: var(--green-ink);
+    font-weight: 600;
+  }
+
+  .api-item .requery.bad {
+    color: var(--red-ink);
+    font-weight: 600;
+  }
+
+  .api-item .requery-btn {
+    justify-self: start;
+  }
+
+  .api-item .waiting {
+    color: var(--amber-ink);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .void {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    color: var(--violet-ink);
+    font-size: var(--t-xs);
+    font-weight: 650;
+  }
+
+  .api-item.invalidated > :not(.void) {
+    opacity: 0.5;
+  }
+
+  .api-item.invalidated .value strong {
+    text-decoration: line-through;
+  }
+</style>

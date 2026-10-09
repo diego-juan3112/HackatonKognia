@@ -1,0 +1,85 @@
+---
+import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource-variable/instrument-sans";
+import "@fontsource-variable/jetbrains-mono";
+import "../styles/global.css";
+import { ClientRouter } from "astro:transitions";
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  /** The console fills the viewport and scrolls inside its cards. */
+  fill?: boolean;
+}
+
+const { title, description, fill = false } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es-CO" data-status="idle">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <ClientRouter />
+    <script is:inline>
+      // The router replaces the attributes of <html> on every swap; restore the live status.
+      document.addEventListener("astro:after-swap", () => {
+        document.documentElement.dataset.status = window.__engineStatus || "idle";
+      });
+    </script>
+  </head>
+  <body class:list={{ fill }}>
+    <a class="skip" href="#contenido">Saltar al contenido</a>
+    <SiteHeader />
+    <main id="contenido">
+      <slot />
+    </main>
+    <SiteFooter />
+    <script>
+      import { getState, subscribe } from "../voice/store";
+
+      declare global {
+        interface Window {
+          __engineStatus?: string;
+        }
+      }
+
+      // The store outlives navigations; this subscription is created once.
+      const sync = (): void => {
+        const status = getState().status;
+        window.__engineStatus = status;
+        document.documentElement.dataset.status = status;
+      };
+      subscribe((_state, slices) => {
+        if (slices.has("status") || slices.has("reset")) sync();
+      });
+      sync();
+    </script>
+  </body>
+</html>
+
+<style>
+  main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  @media (min-width: 1024px) and (min-height: 640px) {
+    body.fill {
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    body.fill main {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+  }
+</style>

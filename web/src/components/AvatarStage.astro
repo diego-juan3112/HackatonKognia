@@ -1,0 +1,441 @@
+---
+/**
+ * Left card: the stage for the 3D avatar (mounted by src/avatar/, another lane)
+ * with the orb as visual fallback, the live status badge, the subtitle bubble,
+ * camera buttons, and the session controls underneath.
+ */
+import Lightbulb from "@lucide/astro/icons/lightbulb";
+import Maximize from "@lucide/astro/icons/maximize";
+import Mic from "@lucide/astro/icons/mic";
+import Rotate3d from "@lucide/astro/icons/rotate-3d";
+import Square from "@lucide/astro/icons/square";
+import VolumeX from "@lucide/astro/icons/volume-x";
+import ZoomIn from "@lucide/astro/icons/zoom-in";
+import ZoomOut from "@lucide/astro/icons/zoom-out";
+import Orb from "./Orb.astro";
+import brief from "../../mocks/brief.json";
+
+const tips = [...brief.suggested_questions, "¿Hay cama disponible hoy?"];
+---
+
+<section class="card stage-card" id="stage" aria-label="Asistente y controles de voz">
+  <div id="avatar-stage" data-avatar="absent">
+    <canvas id="avatar-canvas" aria-hidden="true"></canvas>
+    <div class="fallback">
+      <Orb />
+    </div>
+
+    <p class="live-badge" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="state-badge">En línea</span>
+    </p>
+
+    <div class="stage-tools" role="group" aria-label="Vista del asistente">
+      <button type="button" id="btn-fullscreen" aria-label="Pantalla completa" title="Pantalla completa"><Maximize aria-hidden="true" /></button>
+      <button type="button" id="btn-camera" aria-label="Reiniciar cámara" title="Reiniciar cámara"><Rotate3d aria-hidden="true" /></button>
+      <button type="button" id="btn-zoom-in" aria-label="Acercar" title="Acercar"><ZoomIn aria-hidden="true" /></button>
+      <button type="button" id="btn-zoom-out" aria-label="Alejar" title="Alejar"><ZoomOut aria-hidden="true" /></button>
+    </div>
+
+    <p class="subtitle" id="subtitle" aria-hidden="true" hidden></p>
+    <!-- Screen readers get finished utterances only, never every partial. -->
+    <div class="sr-only" id="subtitle-live" aria-live="polite" aria-atomic="true"></div>
+  </div>
+
+  <div class="stage-controls">
+    <div class="buttons">
+      <button class="btn btn-green" type="button" id="btn-toggle" data-running="false">
+        <span class="when-stopped"><Mic aria-hidden="true" /> Activar micrófono</span>
+        <span class="when-running"><Square aria-hidden="true" /> Detener</span>
+      </button>
+      <button class="btn" type="button" id="btn-mute" disabled aria-keyshortcuts="Escape" title="Corta lo que el asistente está diciendo (Esc)">
+        <VolumeX aria-hidden="true" /> Silenciar
+      </button>
+    </div>
+
+    <div class="status-card">
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <p class="status-line"><strong id="status-presence">En línea</strong> · <span id="status-label">Listo para conversar</span></p>
+        <p class="status-sub" id="status-sub">Activa el micrófono para oír el resumen de la fuente.</p>
+      </div>
+    </div>
+
+    <p class="tip">
+      <Lightbulb aria-hidden="true" />
+      <span><strong>Consejo:</strong> prueba con <button type="button" id="tip-q" data-tips={JSON.stringify(tips)}>{tips[1]}</button></span>
+    </p>
+  </div>
+</section>
+
+<script>
+  import { hostAvatar } from "../scripts/avatar-host";
+  import { bind, byId, esc, panel } from "../scripts/dom";
+  import * as controller from "../voice/controller";
+  import { getState, type ConsoleState } from "../voice/store";
+  import type { EngineStatus, SpeechKind } from "../voice/types";
+
+  const LABEL: Record<EngineStatus, string> = {
+    idle: "Listo para conversar",
+    connecting: "Conectando",
+    listening: "Te escucho",
+    thinking: "Consultando la fuente",
+    speaking: "Hablando",
+    renewing: "Renovando la sesión",
+    error: "Hay un problema",
+  };
+
+  const SUB: Record<EngineStatus, string> = {
+    idle: "Activa el micrófono para oír el resumen de la fuente.",
+    connecting: "Preparando la sesión y calentando la fuente de datos.",
+    listening: "Habla o escribe tu pregunta.",
+    thinking: "Buscando en datos.gov.co antes de responder.",
+    speaking: "Puedes interrumpir cuando quieras.",
+    renewing: "Cambio de motor con el contexto de la conversación. No se repite ninguna consulta.",
+    error: "Puedes seguir por texto o pulsar Repetir.",
+  };
+
+  const KIND: Record<SpeechKind, string> = {
+    brief: "Resumen inicial de la fuente. Puedes interrumpir.",
+    ack: "Aviso corto antes de consultar. No cuenta como respuesta.",
+    answer: "Respuesta con la cifra de la fuente. Puedes interrumpir.",
+  };
+
+  /** The bubble shows the tail of long speech, so it never covers the avatar. */
+  const SUBTITLE_WORDS = 24;
+  const tail = (text: string): string => {
+    const words = text.split(/\s+/);
+    return words.length > SUBTITLE_WORDS ? `… ${words.slice(-SUBTITLE_WORDS).join(" ")}` : text;
+  };
+
+  const ZOOM_MIN = 0.7;
+  const ZOOM_MAX = 1.6;
+
+  panel("stage", () => {
+    const stage = byId("avatar-stage");
+    const canvas = byId<HTMLCanvasElement>("avatar-canvas");
+    const toggle = byId<HTMLButtonElement>("btn-toggle");
+    const mute = byId<HTMLButtonElement>("btn-mute");
+    const tip = byId<HTMLButtonElement>("tip-q");
+    const subtitle = byId("subtitle");
+    const live = byId("subtitle-live");
+    const tips = JSON.parse(tip?.dataset.tips ?? "[]") as string[];
+    let zoom = 1;
+    let announced = "";
+
+    const avatar = stage && canvas ? hostAvatar(stage, canvas) : null;
+
+    const setZoom = (value: number): void => {
+      zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+      stage?.style.setProperty("--zoom", zoom.toFixed(2));
+    };
+
+    toggle?.addEventListener("click", () => (getState().running ? controller.stop() : void controller.start()));
+    mute?.addEventListener("click", () => controller.interruptSpeech());
+    tip?.addEventListener("click", () => controller.sendText(tip.textContent ?? ""));
+    byId("btn-zoom-in")?.addEventListener("click", () => setZoom(zoom + 0.15));
+    byId("btn-zoom-out")?.addEventListener("click", () => setZoom(zoom - 0.15));
+    byId("btn-camera")?.addEventListener("click", () => {
+      setZoom(1);
+      avatar?.resetCamera();
+    });
+    byId("btn-fullscreen")?.addEventListener("click", () => {
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else void stage?.requestFullscreen?.().catch(() => undefined);
+    });
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape" && getState().status === "speaking" && !document.querySelector("dialog[open]")) {
+        controller.interruptSpeech();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+
+    const renderStatus = (s: ConsoleState): void => {
+      const stopped = !s.running && s.status === "idle";
+      const ended = stopped && s.utterances.length > 0;
+      const label = ended ? "Conversación detenida" : LABEL[s.status];
+      const presence = s.status === "error" ? "Con problemas" : s.running ? "En sesión" : "En línea";
+      const sub = ended
+        ? "Activa el micrófono para empezar de nuevo."
+        : s.status === "speaking" && s.speakingKind
+          ? KIND[s.speakingKind]
+          : s.status === "error" && s.lastError
+            ? s.lastError.message
+            : SUB[s.status];
+      const set = (id: string, text: string): void => {
+        const el = byId(id);
+        if (el && el.textContent !== text) el.textContent = text;
+      };
+      set("state-badge", stopped ? "En línea" : label);
+      set("status-presence", presence);
+      set("status-label", label);
+      set("status-sub", s.simulated ? `${sub} Motor simulado: sin audio ni micrófono.` : sub);
+      if (toggle) toggle.dataset.running = String(s.running);
+      if (mute) mute.disabled = s.status !== "speaking";
+      if (tip && tips.length) tip.textContent = tips[(s.turns.length + 1) % tips.length] ?? tip.textContent;
+    };
+
+    const renderSubtitle = (s: ConsoleState): void => {
+      if (!subtitle) return;
+      const last = s.utterances[s.utterances.length - 1];
+      subtitle.hidden = !last;
+      if (!last) return;
+      const who = last.role === "agent" ? "Asistente" : "Tú";
+      const heard = last.delivered_text ?? last.correction?.text ?? last.text;
+      subtitle.className = `subtitle role-${last.role}${last.final ? "" : " partial"}`;
+      subtitle.innerHTML = `<b>${who}</b> ${esc(tail(heard))}`;
+      if (last.final && live && announced !== last.id) {
+        announced = last.id;
+        live.textContent = `${who}: ${heard}`;
+      }
+    };
+
+    const unbindStatus = bind(["status", "meta", "latency"], renderStatus);
+    const unbindSubtitle = bind(["transcript"], renderSubtitle);
+
+    return () => {
+      unbindStatus();
+      unbindSubtitle();
+      avatar?.dispose();
+      document.removeEventListener("keydown", onKey);
+    };
+  });
+</script>
+
+<style>
+  .stage-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    min-height: 0;
+    padding: var(--s-3);
+  }
+
+  #avatar-stage {
+    --zoom: 1;
+    --orb-size: min(58%, 46vh, 340px);
+    position: relative;
+    flex: 1;
+    min-height: 260px;
+    overflow: hidden;
+    border-radius: var(--r-lg);
+    background:
+      radial-gradient(60% 22% at 50% 96%, rgb(37 99 235 / 0.16), transparent 70%),
+      radial-gradient(90% 70% at 50% 30%, color-mix(in oklab, var(--state-soft) 80%, #fff), transparent 75%),
+      linear-gradient(180deg, #eaf1ff, #f3efff);
+    transition: background 0.4s var(--ease);
+  }
+
+  #avatar-stage:fullscreen {
+    border-radius: 0;
+  }
+
+  #avatar-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+    transform: scale(var(--zoom));
+    transition:
+      opacity 0.4s,
+      transform 0.25s var(--ease);
+  }
+
+  #avatar-stage[data-avatar="ready"] #avatar-canvas {
+    opacity: 1;
+  }
+
+  .fallback {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    transform: scale(var(--zoom));
+    transition:
+      opacity 0.4s,
+      transform 0.25s var(--ease);
+  }
+
+  #avatar-stage[data-avatar="ready"] .fallback {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .live-badge {
+    position: absolute;
+    top: var(--s-3);
+    left: var(--s-3);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.3rem 0.8rem;
+    border-radius: var(--r-pill);
+    background: rgb(255 255 255 / 0.9);
+    box-shadow: var(--shadow-float);
+    color: var(--state-ink);
+    font-size: var(--t-sm);
+    font-weight: 650;
+    backdrop-filter: blur(6px);
+  }
+
+  .dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    flex: none;
+    border-radius: 50%;
+    background: var(--state);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--state) 22%, transparent);
+    transition:
+      background-color 0.3s,
+      box-shadow 0.3s;
+  }
+
+  .stage-tools {
+    position: absolute;
+    top: var(--s-3);
+    right: var(--s-3);
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .stage-tools button {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 0;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.92);
+    box-shadow: var(--shadow-float);
+    color: var(--ink-2);
+    transition:
+      color 0.15s,
+      transform 0.15s var(--ease);
+  }
+
+  .stage-tools button:hover {
+    color: var(--primary-ink);
+    transform: scale(1.06);
+  }
+
+  .subtitle {
+    position: absolute;
+    left: 50%;
+    bottom: var(--s-4);
+    translate: -50% 0;
+    width: max-content;
+    max-width: min(92%, 34rem);
+    padding: var(--s-2) var(--s-4) var(--s-3);
+    border-radius: var(--r-lg);
+    background: rgb(15 27 51 / 0.86);
+    color: #fff;
+    font-size: var(--t-base);
+    font-weight: 550;
+    line-height: 1.35;
+    text-wrap: pretty;
+    backdrop-filter: blur(6px);
+  }
+
+  .subtitle :global(b) {
+    display: block;
+    font-size: var(--t-xs);
+    font-weight: 700;
+    color: #9ec0ff;
+  }
+
+  .subtitle.role-user :global(b) {
+    color: #86efac;
+  }
+
+  .stage-controls {
+    display: grid;
+    gap: var(--s-3);
+    padding: 0 var(--s-1) var(--s-1);
+  }
+
+  .buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--s-2);
+  }
+
+  .buttons .btn:not(.btn-green) {
+    min-height: 3rem;
+    padding-inline: var(--s-5);
+  }
+
+  .btn-green span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .btn-green[data-running="true"] .when-stopped,
+  .btn-green[data-running="false"] .when-running {
+    display: none;
+  }
+
+  .status-card {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--state-soft);
+    transition: background-color 0.3s;
+  }
+
+  .status-card .dot {
+    margin-top: 0.4rem;
+  }
+
+  .status-line {
+    font-size: var(--t-sm);
+    color: var(--ink);
+  }
+
+  .status-line strong {
+    color: var(--state-ink);
+  }
+
+  .status-sub {
+    color: var(--ink-2);
+    font-size: var(--t-xs);
+    line-height: 1.4;
+  }
+
+  .tip {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--amber-soft);
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+    line-height: 1.4;
+  }
+
+  .tip :global(svg) {
+    margin-top: 0.15em;
+    color: var(--amber-ink);
+  }
+
+  .tip strong {
+    color: var(--amber-ink);
+  }
+
+  .tip button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--primary-ink);
+    font-weight: 650;
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+</style>

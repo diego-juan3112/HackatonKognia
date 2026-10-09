@@ -1,0 +1,640 @@
+---
+/**
+ * Conversation as chat bubbles (docs/08 §8): agent on the left, user on the
+ * right, each with its session time. Partials show a typing indicator;
+ * corrections («original → corregido») and unheard agent text are rendered
+ * inside the bubble; every answer backed by a query carries a collapsible
+ * evidence card. Below: repair controls and the text composer (F-12).
+ */
+import Mic from "@lucide/astro/icons/mic";
+import PencilLine from "@lucide/astro/icons/pencil-line";
+import Repeat2 from "@lucide/astro/icons/repeat-2";
+import RotateCcw from "@lucide/astro/icons/rotate-ccw";
+import Send from "@lucide/astro/icons/send";
+import Square from "@lucide/astro/icons/square";
+import Zap from "@lucide/astro/icons/zap";
+import brief from "../../mocks/brief.json";
+---
+
+<div class="chat" id="chat">
+  <div class="chat-scroll" id="chat-scroll" tabindex="0" role="region" aria-label="Mensajes de la conversación">
+    <div class="chat-empty" id="chat-empty">
+      <p class="lead">Hola. Soy un asistente de inteligencia artificial y consulto en vivo el registro de IPS del Ministerio de Salud.</p>
+      <p>Activa el micrófono para oír el resumen de la fuente, o empieza con una pregunta:</p>
+      <ul class="chips" id="chips">
+        {
+          brief.suggested_questions.map((q) => (
+            <li>
+              <button type="button" data-q={q}>{q}</button>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+    <ol class="msgs" id="msgs" aria-live="off"></ol>
+  </div>
+
+  <form class="fix" id="fix-form" hidden>
+    <label for="fix-input">Corrige lo que dijiste. Se conserva el original y se vuelve a consultar.</label>
+    <div class="fix-row">
+      <input id="fix-input" type="text" autocomplete="off" required />
+      <button class="btn btn-primary" type="submit">Enviar corrección</button>
+      <button class="btn" type="button" id="fix-cancel">Cancelar</button>
+    </div>
+  </form>
+
+  <div class="repair" role="group" aria-label="Reparar la conversación">
+    <button class="btn btn-sm" type="button" id="btn-correct" disabled><PencilLine aria-hidden="true" /> Corregir lo que dije</button>
+    <button class="btn btn-sm" type="button" id="btn-direct" aria-pressed="false"><Zap aria-hidden="true" /> Más directo</button>
+    <button class="btn btn-sm" type="button" id="btn-repeat" disabled><Repeat2 aria-hidden="true" /> Repetir</button>
+    <button class="btn btn-sm" type="button" id="btn-restart"><RotateCcw aria-hidden="true" /> Reiniciar</button>
+  </div>
+
+  <form class="composer" id="ask-form">
+    <label class="sr-only" for="ask-input">Escribe tu pregunta</label>
+    <input id="ask-input" type="text" autocomplete="off" placeholder="Escribe tu pregunta…" />
+    <button class="mic" type="button" id="btn-mic" data-running="false" aria-label="Activar micrófono" title="Activar micrófono">
+      <span class="when-stopped"><Mic aria-hidden="true" /></span>
+      <span class="when-running"><Square aria-hidden="true" /></span>
+    </button>
+    <button class="btn btn-primary" type="submit"><Send aria-hidden="true" /> Enviar</button>
+  </form>
+</div>
+
+<script>
+  import { bind, byId, clock, esc, icon, panel, reconcile, type KeyedItem } from "../scripts/dom";
+  import { evidenceBody, summaryLine } from "../scripts/evidence";
+  import * as controller from "../voice/controller";
+  import { getState, type ConsoleState, type Notice, type ToolEntry, type Utterance } from "../voice/store";
+
+  /** Evidence cards the reader opened; kept across re-renders. */
+  const openCards = new Set<string>();
+
+  /** Agent text split into what was heard and what was generated but never played. */
+  function agentText(u: Utterance): string {
+    if (u.delivered_text === undefined) return esc(u.text);
+    const heard = u.delivered_text;
+    const rest = u.text.startsWith(heard) ? u.text.slice(heard.length) : "";
+    if (!rest.trim()) return esc(heard);
+    return `${esc(heard)}<span class="unheard" title="Generado, pero no llegó a oírse">${esc(rest)}</span>`;
+  }
+
+  function userText(u: Utterance): string {
+    if (!u.correction) return esc(u.text);
+    return `<s class="orig">${esc(u.text)}</s><span class="fix-arrow"><span class="sr-only">corregido a</span>${icon("arrow-right")}</span><span class="fixed">${esc(u.correction.text)}</span>`;
+  }
+
+  function meta(u: Utterance): string {
+    const tags: string[] = [];
+    if (u.kind === "ack") tags.push("aviso previo");
+    if (u.kind === "brief") tags.push("resumen inicial");
+    if (u.role === "user" && u.t_source === "local") tags.push("por texto");
+    if (u.correction) tags.push("corregido");
+    if (u.delivered_text !== undefined) tags.push("interrumpido: lo tachado no se oyó");
+    const delivered = u.final && u.delivered_text === undefined ? `<span class="tick" title="Entregado">${icon("check-check")}<span class="sr-only">Entregado</span></span>` : "";
+    return `<p class="msg-meta"><time title="${clock(u.t_start)}">${clock(u.t_start).slice(0, 5)}</time>${tags.map((t) => `<span>${t}</span>`).join("")}${delivered}</p>`;
+  }
+
+  function bubble(u: Utterance): KeyedItem {
+    const typing = u.final
+      ? ""
+      : `<p class="typing"><span>${u.role === "agent" ? "Escribiendo…" : "Escuchando…"}</span><i></i><i></i><i></i></p>`;
+    const who = u.role === "agent" ? "Asistente" : "Tú";
+    return {
+      key: u.id,
+      cls: `msg from-${u.role}${u.final ? "" : " partial"}${u.kind === "ack" ? " is-ack" : ""}`,
+      html: `<div class="bubble"><span class="sr-only">${who}:</span><p class="text">${u.role === "agent" ? agentText(u) : userText(u)}</p>${typing}${meta(u)}</div>`,
+    };
+  }
+
+  function evidenceCard(t: ToolEntry, s: ConsoleState): KeyedItem {
+    return {
+      key: `ev-${t.tool_call_id}`,
+      cls: "msg from-agent is-evidence",
+      html: `<details class="evidence${t.invalidated ? " invalidated" : ""}" data-card="${esc(t.tool_call_id)}"${openCards.has(t.tool_call_id) ? " open" : ""}>
+        <summary><span class="ev-title">Evidencia</span>${summaryLine(t)}</summary>
+        <div class="api-item${t.invalidated ? " invalidated" : ""}">${evidenceBody(t, s)}</div>
+      </details>`,
+    };
+  }
+
+  function noticeItem(n: Notice): KeyedItem {
+    return {
+      key: `n-${n.id}`,
+      cls: `msg system system-${n.kind}`,
+      html: `<p>${icon(n.kind === "error" ? "triangle-alert" : "info")}<span>${esc(n.text)}</span></p>`,
+    };
+  }
+
+  /** Utterances in order, each turn followed by its evidence, with notices placed by time. */
+  function timeline(s: ConsoleState): KeyedItem[] {
+    const items: KeyedItem[] = [];
+    const notices = [...s.notices];
+    const lastOfTurn = new Map<string, string>();
+    for (const u of s.utterances) if (u.turn_id) lastOfTurn.set(u.turn_id, u.id);
+    for (const u of s.utterances) {
+      while (notices[0] && notices[0].t <= u.t_start) items.push(noticeItem(notices.shift()!));
+      items.push(bubble(u));
+      if (u.turn_id && lastOfTurn.get(u.turn_id) === u.id) {
+        for (const t of s.tools) if (t.turn_id === u.turn_id) items.push(evidenceCard(t, s));
+      }
+    }
+    for (const n of notices) items.push(noticeItem(n));
+    return items;
+  }
+
+  panel("chat", () => {
+    const scroll = byId("chat-scroll");
+    const msgs = byId("msgs");
+    const empty = byId("chat-empty");
+    const fixForm = byId<HTMLFormElement>("fix-form");
+    const fixInput = byId<HTMLInputElement>("fix-input");
+    const askForm = byId<HTMLFormElement>("ask-form");
+    const askInput = byId<HTMLInputElement>("ask-input");
+    const correct = byId<HTMLButtonElement>("btn-correct");
+    const direct = byId<HTMLButtonElement>("btn-direct");
+    const repeat = byId<HTMLButtonElement>("btn-repeat");
+    const mic = byId<HTMLButtonElement>("btn-mic");
+    let fixTarget: string | null = null;
+    // Set when the reader sends something: their own message must come into view.
+    let jumpToEnd = false;
+
+    const render = (s: ConsoleState): void => {
+      if (!scroll || !msgs || !empty) return;
+      const pinned = jumpToEnd || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
+      const items = timeline(s);
+      empty.hidden = items.length > 0;
+      reconcile(msgs, items);
+      if (pinned) scroll.scrollTop = scroll.scrollHeight;
+      if (jumpToEnd && s.utterances.some((u) => u.role === "agent" && !u.final)) jumpToEnd = false;
+    };
+
+    const renderControls = (s: ConsoleState): void => {
+      if (repeat) repeat.disabled = !s.running || !s.utterances.some((u) => u.role === "agent" && u.kind === "answer" && u.final);
+      if (correct) correct.disabled = !s.running || !s.utterances.some((u) => u.role === "user" && u.final);
+      if (direct) direct.setAttribute("aria-pressed", String(s.style.source === "preference" && s.style.style === "directo"));
+      if (mic) {
+        mic.dataset.running = String(s.running);
+        const label = s.running ? "Detener la conversación" : "Activar micrófono";
+        mic.setAttribute("aria-label", label);
+        mic.title = label;
+      }
+    };
+
+    const closeFix = (): void => {
+      if (fixForm) fixForm.hidden = true;
+      fixTarget = null;
+    };
+
+    correct?.addEventListener("click", () => {
+      const target = [...getState().utterances].reverse().find((u) => u.role === "user" && u.final);
+      if (!target || !fixForm || !fixInput) return;
+      fixTarget = target.id;
+      fixForm.hidden = false;
+      fixInput.value = target.correction?.text ?? target.text;
+      fixInput.focus();
+      fixInput.select();
+    });
+    byId("fix-cancel")?.addEventListener("click", closeFix);
+    fixForm?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      jumpToEnd = true;
+      if (fixTarget && fixInput) controller.correct(fixTarget, fixInput.value);
+      closeFix();
+    });
+    direct?.addEventListener("click", () => controller.toggleDirect());
+    repeat?.addEventListener("click", () => {
+      jumpToEnd = true;
+      controller.repeat();
+    });
+    byId("btn-restart")?.addEventListener("click", () => {
+      openCards.clear();
+      closeFix();
+      controller.restart();
+    });
+    mic?.addEventListener("click", () => (getState().running ? controller.stop() : void controller.start()));
+    askForm?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!askInput || !askInput.value.trim()) return;
+      jumpToEnd = true;
+      controller.sendText(askInput.value);
+      askInput.value = "";
+    });
+    byId("chips")?.addEventListener("click", (e) => {
+      const q = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-q]")?.dataset.q;
+      if (!q) return;
+      jumpToEnd = true;
+      controller.sendText(q);
+    });
+    // `toggle` does not bubble: capture it to remember which cards are open.
+    msgs?.addEventListener(
+      "toggle",
+      (e) => {
+        const card = e.target as HTMLDetailsElement;
+        const id = card.dataset?.card;
+        if (!id) return;
+        if (card.open) openCards.add(id);
+        else openCards.delete(id);
+      },
+      true,
+    );
+
+    const unbindLog = bind(["transcript", "tools", "notices"], render);
+    const unbindControls = bind(["transcript", "style", "meta", "status"], renderControls);
+    return () => {
+      unbindLog();
+      unbindControls();
+    };
+  });
+</script>
+
+<style is:global>
+  .chat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    flex: 1;
+    min-height: 0;
+  }
+
+  .chat-scroll {
+    flex: 1;
+    min-height: 12rem;
+    overflow-y: auto;
+    padding: var(--s-4) var(--s-4) var(--s-2);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  .chat-empty {
+    display: grid;
+    gap: var(--s-3);
+    max-width: 34rem;
+    margin: 6vh auto 0;
+    color: var(--ink-2);
+    text-align: center;
+  }
+
+  .chat-empty .lead {
+    font-family: var(--font-display);
+    font-size: var(--t-md);
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--s-2);
+  }
+
+  .chips button {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill);
+    background: var(--card);
+    color: var(--primary-ink);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .chips button:hover {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+  }
+
+  /* ── Messages ──────────────────────────────────────────────────────────── */
+
+  .msgs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+
+  .msg {
+    display: flex;
+    max-width: min(88%, 40rem);
+  }
+
+  .msg.from-agent {
+    align-self: flex-start;
+  }
+
+  .msg.from-user {
+    align-self: flex-end;
+  }
+
+  .msg.from-user + .msg.from-agent,
+  .msg.from-agent + .msg.from-user,
+  .msg.system {
+    margin-top: var(--s-2);
+  }
+
+  .bubble {
+    padding: var(--s-2) var(--s-4);
+    border-radius: 20px;
+    background: var(--subtle-2);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .from-agent .bubble {
+    border-bottom-left-radius: 6px;
+  }
+
+  .from-user .bubble {
+    border-bottom-right-radius: 6px;
+    background: #d9e8ff;
+  }
+
+  .is-ack .bubble {
+    background: transparent;
+    border: 1px dashed var(--border-strong);
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+  }
+
+  .bubble .unheard {
+    color: var(--ink-3);
+    opacity: 0.75;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+
+  .bubble .orig {
+    color: var(--ink-3);
+  }
+
+  .bubble .fix-arrow {
+    display: inline-flex;
+    margin: 0 0.3em;
+    vertical-align: -0.15em;
+    color: var(--violet-ink);
+  }
+
+  .bubble .fixed {
+    font-weight: 650;
+  }
+
+  .msg-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0 var(--s-2);
+    margin-top: 2px;
+    color: var(--ink-3);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .from-agent .msg-meta {
+    justify-content: flex-start;
+  }
+
+  .msg-meta .tick {
+    display: inline-flex;
+    color: var(--primary);
+    font-size: 0.875rem;
+  }
+
+  .typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+    font-weight: 600;
+  }
+
+  .typing span {
+    margin-right: 2px;
+  }
+
+  .typing i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: typing 1.1s infinite ease-in-out;
+  }
+
+  .typing i:nth-child(3) { animation-delay: 0.15s; }
+  .typing i:nth-child(4) { animation-delay: 0.3s; }
+
+  @keyframes typing {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
+  }
+
+  .msg.system {
+    align-self: center;
+    max-width: 92%;
+  }
+
+  .msg.system p {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-2);
+    padding: 0.35rem 0.9rem;
+    border-radius: var(--r-md);
+    background: var(--violet-soft);
+    color: var(--violet-ink);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  .msg.system svg {
+    margin-top: 0.15em;
+  }
+
+  .msg.system-error p {
+    background: var(--red-soft);
+    color: var(--red-ink);
+  }
+
+  /* ── Evidence card ─────────────────────────────────────────────────────── */
+
+  .msg.is-evidence {
+    width: min(100%, 40rem);
+    max-width: 100%;
+  }
+
+  .evidence {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--card);
+    box-shadow: 0 1px 2px rgb(15 27 51 / 0.04);
+  }
+
+  .evidence summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-3);
+    padding: var(--s-2) var(--s-3);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    color: var(--ink-2);
+    font-size: var(--t-xs);
+    list-style: none;
+  }
+
+  .evidence summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .evidence summary::after {
+    content: "";
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-left: auto;
+    border-right: 2px solid var(--ink-3);
+    border-bottom: 2px solid var(--ink-3);
+    rotate: 45deg;
+    translate: 0 -2px;
+    transition: rotate 0.2s var(--ease);
+  }
+
+  .evidence[open] summary::after {
+    rotate: 225deg;
+    translate: 0 2px;
+  }
+
+  .evidence summary:hover {
+    background: var(--subtle);
+  }
+
+  .evidence .ev-title {
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  .evidence summary code {
+    color: var(--primary-ink);
+    font-weight: 700;
+  }
+
+  .evidence .api-item {
+    padding: var(--s-3);
+    border-top: 1px solid var(--border);
+  }
+
+  .evidence .api-item .head {
+    display: none;
+  }
+
+  /* ── Forms ─────────────────────────────────────────────────────────────── */
+
+  .chat .fix {
+    margin: 0 var(--s-4);
+    padding: var(--s-3);
+    border-radius: var(--r-md);
+    background: var(--violet-soft);
+  }
+
+  .chat .fix label {
+    display: block;
+    margin-bottom: var(--s-2);
+    font-size: var(--t-sm);
+    font-weight: 600;
+  }
+
+  .chat .fix-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .chat .fix-row input {
+    flex-basis: 14rem;
+  }
+
+  .chat .fix-row .btn {
+    min-height: 2.75rem;
+    font-size: var(--t-sm);
+  }
+
+  .repair {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    padding: 0 var(--s-4);
+  }
+
+  .composer {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-3) var(--s-4) var(--s-4);
+    border-top: 1px solid var(--border);
+  }
+
+  .chat input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    min-height: 2.9rem;
+    padding: 0 var(--s-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill);
+    background: var(--subtle);
+  }
+
+  .chat input[type="text"]:focus {
+    background: var(--card);
+  }
+
+  .chat input[type="text"]::placeholder {
+    color: var(--ink-3);
+  }
+
+  .composer .mic {
+    display: grid;
+    place-items: center;
+    width: 2.9rem;
+    height: 2.9rem;
+    flex: none;
+    border: 0;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 1.1rem;
+    transition: background-color 0.15s;
+  }
+
+  .composer .mic:hover {
+    background: var(--green-ink);
+  }
+
+  .composer .mic span {
+    display: grid;
+  }
+
+  .composer .mic[data-running="true"] {
+    background: var(--ink);
+  }
+
+  .composer .mic[data-running="true"] .when-stopped,
+  .composer .mic[data-running="false"] .when-running {
+    display: none;
+  }
+
+  .composer .btn-primary {
+    min-height: 2.9rem;
+  }
+
+  @media (max-width: 520px) {
+    .composer .btn-primary {
+      padding-inline: var(--s-4);
+    }
+  }
+</style>

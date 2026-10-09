@@ -1,0 +1,47 @@
+---
+import Scale from "@lucide/astro/icons/scale";
+---
+
+<footer class="site-footer">
+  <p>
+    <Scale aria-hidden="true" />
+    <span>
+      Datos: Ministerio de Salud y Protección Social — REPS,{" "}
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.es" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>,
+      corte 2022-11-05. Consultados en{" "}
+      <a href="https://www.datos.gov.co/d/s2ru-bqt6" target="_blank" rel="noopener noreferrer">datos.gov.co</a>.
+    </span>
+  </p>
+  <p class="quiet">Capacidad instalada, no disponibilidad. Las emociones son estimaciones, no un diagnóstico.</p>
+</footer>
+
+<style>
+  .site-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--s-1) var(--s-5);
+    padding: var(--s-2) clamp(var(--s-4), 3vw, var(--s-6));
+    border-top: 1px solid var(--border);
+    color: var(--ink-2);
+    font-size: var(--t-xs);
+  }
+
+  p {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .quiet {
+    color: var(--ink-3);
+  }
+
+  a {
+    text-underline-offset: 2px;
+  }
+
+  a:hover {
+    color: var(--ink);
+  }
+</style>

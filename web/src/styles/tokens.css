@@ -1,0 +1,87 @@
+/*
+ * Design tokens. Light theme: white cards on a very light blue-grey page,
+ * a blue primary, green for the microphone, generous radii and soft shadows.
+ */
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #eef2f8;
+  --card: #ffffff;
+  --subtle: #f4f6fb;
+  --subtle-2: #e9eef6;
+  --border: #e3e8f1;
+  --border-strong: #cbd4e3;
+
+  /* Ink */
+  --ink: #0f1b33;
+  --ink-2: #44506a;
+  --ink-3: #6b7790;
+
+  /* Accents: fill, readable ink, soft background */
+  --primary: #2563eb;
+  --primary-ink: #1d4ed8;
+  --primary-soft: #e3edff;
+  --green: #16a34a;
+  --green-ink: #12803b;
+  --green-soft: #dcf5e5;
+  --amber: #f59e0b;
+  --amber-ink: #9a5b00;
+  --amber-soft: #fff1d6;
+  --violet: #7c5cf5;
+  --violet-ink: #5b3fd6;
+  --violet-soft: #ece7ff;
+  --sky: #0ea5e9;
+  --sky-ink: #0b6fa3;
+  --sky-soft: #def3fd;
+  --red: #e5484d;
+  --red-ink: #c22b31;
+  --red-soft: #fde5e6;
+
+  /* Live state colour: follows the engine status (set on <html data-status>) */
+  --state: var(--green);
+  --state-ink: var(--green-ink);
+  --state-soft: var(--green-soft);
+
+  /* Type */
+  --font-display: "Bricolage Grotesque Variable", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Instrument Sans Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* Scale: 1.25 on a 16px base */
+  --t-xs: 0.75rem;
+  --t-sm: 0.8125rem;
+  --t-base: 1rem;
+  --t-md: 1.125rem;
+  --t-lg: 1.5625rem;
+  --t-xl: 2.4375rem;
+  --t-2xl: clamp(2.6rem, 1.2rem + 4.6vw, 4.75rem);
+
+  /* Space and shape */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4.5rem;
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgb(15 27 51 / 0.04), 0 12px 32px -12px rgb(15 27 51 / 0.12);
+  --shadow-float: 0 2px 6px rgb(15 27 51 / 0.08), 0 10px 24px -8px rgb(15 27 51 / 0.18);
+
+  --ease: cubic-bezier(0.22, 0.8, 0.26, 1);
+}
+
+:root[data-status="idle"] { --state: var(--green); --state-ink: var(--green-ink); --state-soft: var(--green-soft); }
+:root[data-status="connecting"] { --state: var(--sky); --state-ink: var(--sky-ink); --state-soft: var(--sky-soft); }
+:root[data-status="listening"] { --state: var(--green); --state-ink: var(--green-ink); --state-soft: var(--green-soft); }
+:root[data-status="thinking"] { --state: var(--amber); --state-ink: var(--amber-ink); --state-soft: var(--amber-soft); }
+:root[data-status="speaking"] { --state: var(--primary); --state-ink: var(--primary-ink); --state-soft: var(--primary-soft); }
+:root[data-status="renewing"] { --state: var(--violet); --state-ink: var(--violet-ink); --state-soft: var(--violet-soft); }
+:root[data-status="error"] { --state: var(--red); --state-ink: var(--red-ink); --state-soft: var(--red-soft); }

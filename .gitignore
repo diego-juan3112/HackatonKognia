@@ -7,3 +7,7 @@ infra/terraform/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
 infra/terraform/.terraform.lock.hcl
+web/node_modules
+web/dist
+.astro
+.vercel

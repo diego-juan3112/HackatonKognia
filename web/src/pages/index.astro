@@ -1,0 +1,391 @@
+---
+import ArrowRight from "@lucide/astro/icons/arrow-right";
+import Mic from "@lucide/astro/icons/mic";
+import ShieldCheck from "@lucide/astro/icons/shield-check";
+import Base from "../layouts/Base.astro";
+import Orb from "../components/Orb.astro";
+import brief from "../../mocks/brief.json";
+
+const nf = new Intl.NumberFormat("es-CO");
+const total = brief.by_nature.reduce((sum, g) => sum + g.value, 0);
+const pct = (v: number): string => {
+  const p = (v / total) * 100;
+  return `${p < 1 ? p.toFixed(2).replace(".", ",") : p.toFixed(1).replace(".", ",")} %`;
+};
+const natureClass: Record<string, string> = { Privada: "n-privada", Pública: "n-publica", Mixta: "n-mixta" };
+---
+
+<Base
+  title="Asistente IPS en Vivo · pregúntale en voz alta al registro de IPS"
+  description="Asistente de voz con IA que consulta en vivo el registro de IPS de Colombia (REPS) en datos.gov.co."
+>
+  <section class="hero">
+    <div class="hero-copy">
+      <h1>Pregúntale en voz alta al registro de IPS de Colombia.</h1>
+      <p class="lede">
+        Hablas, y un asistente consulta en ese momento datos.gov.co para decirte cuántos prestadores de salud hay, dónde
+        están y qué capacidad tienen instalada. Cada cifra llega con la consulta que la produjo.
+      </p>
+      <div class="cta">
+        <a class="btn btn-green" href="/consola?iniciar=1">
+          <Mic aria-hidden="true" />
+          Iniciar conversación
+        </a>
+        <a class="btn" href="/consola">Ver la consola primero</a>
+      </div>
+      <p class="notice">
+        <ShieldCheck aria-hidden="true" />
+        <span>
+          <strong>Vas a hablar con una inteligencia artificial, no con una persona.</strong>
+          El micrófono se pide solo cuando pulsas Iniciar, el audio no se guarda y el análisis de voz requiere tu permiso
+          aparte.
+        </span>
+      </p>
+    </div>
+    <div class="hero-orb">
+      <Orb />
+    </div>
+  </section>
+
+  <section class="brief" aria-labelledby="brief-title">
+    <div class="brief-data card">
+      <h2 id="brief-title">Lo que hay en la fuente</h2>
+      <p class="dataset">«{brief.title}»</p>
+
+      <p class="grain">
+        <span class="big num" data-brief="rows">{nf.format(brief.stats.rows)}</span> filas, una por cada categoría de capacidad
+        de una sede. Describen
+        <span class="big num" data-brief="providers">{nf.format(brief.stats.providers)}</span> prestadores y
+        <span class="big num" data-brief="site_codes">{nf.format(brief.stats.site_codes)}</span> códigos de sede.
+      </p>
+
+      <figure class="nature">
+        <figcaption>Prestadores según su naturaleza jurídica</figcaption>
+        <div class="bar" role="img" aria-label={brief.by_nature.map((g) => `${g.key}: ${nf.format(g.value)}`).join(", ")}>
+          {brief.by_nature.map((g) => <span class={natureClass[g.key]} style={`flex-grow:${g.value}`} />)}
+        </div>
+        <ul class="legend">
+          {
+            brief.by_nature.map((g) => (
+              <li class={natureClass[g.key]}>
+                <span class="swatch" aria-hidden="true" />
+                <span class="k">{g.key}</span>
+                <span class="v num">{nf.format(g.value)}</span>
+                <span class="p num">{pct(g.value)}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </figure>
+
+      <p class="source">
+        <span class="tag tag-quiet" id="brief-origin">Muestra grabada el 9-oct-2026</span>
+        Fuente: {brief.source.name}, licencia {brief.source.license}, corte {brief.source.cutoff_date}.
+      </p>
+
+      <h3>Lo que la fuente no sabe</h3>
+      <ul class="limits">
+        {brief.limits.map((l) => <li>{l}</li>)}
+      </ul>
+    </div>
+
+    <div class="brief-ask card">
+      <h2>Empieza por una de estas</h2>
+      <p class="hint">Todas se pueden contestar con la fuente. Al elegir una se abre la consola y se envía.</p>
+      <ul class="questions">
+        {
+          brief.suggested_questions.map((q) => (
+            <li>
+              <a href={`/consola?q=${encodeURIComponent(q)}`}>
+                <span>{q}</span>
+                <ArrowRight aria-hidden="true" />
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { fetchBrief, USING_MOCKS } from "../voice/api";
+
+  const nf = new Intl.NumberFormat("es-CO");
+
+  // With a backend, replace the recorded figures with the live brief (docs/09 §8).
+  document.addEventListener("astro:page-load", async () => {
+    if (USING_MOCKS || !document.getElementById("brief-origin")) return;
+    const { brief, live } = await fetchBrief();
+    const origin = document.getElementById("brief-origin");
+    if (!live || !origin) return;
+    for (const key of ["rows", "providers", "site_codes"] as const) {
+      const el = document.querySelector(`[data-brief="${key}"]`);
+      if (el) el.textContent = nf.format(brief.stats[key]);
+    }
+    origin.textContent = `Consultado en vivo · ${brief.stats.ms} ms`;
+    origin.className = "tag tag-live";
+  });
+</script>
+
+<style>
+  .hero {
+    --orb-size: clamp(260px, 36vw, 520px);
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    align-items: center;
+    gap: var(--s-6);
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: clamp(var(--s-6), 6vw, var(--s-8)) clamp(var(--s-4), 4vw, var(--s-7)) var(--s-7);
+  }
+
+  h1 {
+    font-size: var(--t-2xl);
+    font-weight: 720;
+    font-variation-settings: "wdth" 88;
+    letter-spacing: -0.03em;
+    line-height: 0.98;
+    max-width: 15ch;
+    background: linear-gradient(105deg, var(--ink) 25%, var(--primary) 62%, var(--violet) 95%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .lede {
+    max-width: 54ch;
+    margin-top: var(--s-5);
+    color: var(--ink-2);
+    font-size: var(--t-md);
+    line-height: 1.55;
+  }
+
+  .cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    margin-top: var(--s-6);
+  }
+
+  .cta .btn:not(.btn-green) {
+    min-height: 3rem;
+    padding-inline: var(--s-5);
+  }
+
+  .notice {
+    display: flex;
+    gap: var(--s-3);
+    max-width: 58ch;
+    margin-top: var(--s-6);
+    padding-left: var(--s-4);
+    border-left: 3px solid var(--amber);
+    color: var(--ink-2);
+    font-size: var(--t-sm);
+    line-height: 1.55;
+  }
+
+  .notice :global(svg) {
+    margin-top: 0.2em;
+    color: var(--amber-ink);
+  }
+
+  .notice strong {
+    display: block;
+    color: var(--ink);
+    font-weight: 650;
+  }
+
+  .hero-orb {
+    display: grid;
+    place-items: center;
+  }
+
+  /* ── Brief ─────────────────────────────────────────────────────────────── */
+
+  .brief {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: clamp(var(--s-6), 5vw, var(--s-8));
+    max-width: 1320px;
+    margin: 0 auto;
+    gap: var(--s-4);
+    padding: 0 clamp(var(--s-4), 4vw, var(--s-7)) var(--s-7);
+  }
+
+  .brief > .card {
+    padding: clamp(var(--s-5), 3vw, var(--s-6));
+  }
+
+  h2 {
+    font-size: var(--t-lg);
+  }
+
+  h3 {
+    margin-top: var(--s-6);
+    font-size: var(--t-md);
+  }
+
+  .dataset {
+    margin-top: var(--s-2);
+    max-width: 60ch;
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  .grain {
+    max-width: 44ch;
+    margin-top: var(--s-5);
+    color: var(--ink-2);
+    font-size: var(--t-md);
+    line-height: 1.7;
+  }
+
+  .big {
+    font-family: var(--font-display);
+    font-size: 1.55em;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .nature {
+    margin-top: var(--s-6);
+    max-width: 640px;
+  }
+
+  figcaption {
+    margin-bottom: var(--s-3);
+    font-weight: 600;
+  }
+
+  .bar {
+    display: flex;
+    gap: 3px;
+    height: 2.5rem;
+  }
+
+  .bar span {
+    min-width: 5px;
+    border-radius: 4px;
+  }
+
+  .bar .n-privada { background: var(--violet); }
+  .bar .n-publica { background: var(--green); }
+  .bar .n-mixta { background: var(--amber); }
+
+  .legend {
+    display: grid;
+    gap: var(--s-1);
+    margin-top: var(--s-3);
+  }
+
+  .legend li {
+    display: grid;
+    grid-template-columns: 1rem 6rem 5rem auto;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: var(--t-sm);
+  }
+
+  .swatch {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 3px;
+  }
+
+  .n-privada .swatch { background: var(--violet); }
+  .n-publica .swatch { background: var(--green); }
+  .n-mixta .swatch { background: var(--amber); }
+
+  .legend .v {
+    text-align: right;
+    font-weight: 650;
+  }
+
+  .legend .p {
+    color: var(--ink-3);
+  }
+
+  .source {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-5);
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  .limits {
+    display: grid;
+    gap: var(--s-2);
+    margin-top: var(--s-3);
+    color: var(--ink-2);
+  }
+
+  .limits li {
+    padding-left: var(--s-4);
+    border-left: 3px solid var(--amber);
+  }
+
+  .hint {
+    max-width: 44ch;
+    margin-top: var(--s-2);
+    color: var(--ink-3);
+    font-size: var(--t-sm);
+  }
+
+  .questions {
+    margin-top: var(--s-5);
+    border-top: 1px solid var(--border);
+  }
+
+  .questions a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-display);
+    font-size: var(--t-md);
+    font-weight: 550;
+    line-height: 1.25;
+    text-decoration: none;
+    transition:
+      padding 0.2s var(--ease),
+      color 0.2s;
+  }
+
+  .questions a :global(svg) {
+    color: var(--ink-3);
+    transition: transform 0.2s var(--ease);
+  }
+
+  .questions a:hover {
+    padding-left: var(--s-4);
+    color: var(--primary-ink);
+  }
+
+  .questions a:hover :global(svg) {
+    color: inherit;
+    transform: translateX(4px);
+  }
+
+  @media (max-width: 900px) {
+    .hero,
+    .brief {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero {
+      --orb-size: min(64vw, 300px);
+    }
+
+    .hero-orb {
+      order: -1;
+    }
+  }
+</style>
