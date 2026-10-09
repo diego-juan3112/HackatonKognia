@@ -49,6 +49,11 @@ const STEPS: Record<string, Step[]> = {
       title: "Preguntas sugeridas",
       text: "¿No sabes por dónde empezar? Elige una y el agente la responde por ti.",
     },
+    {
+      anchors: ['nav a[href="/admin"]'],
+      title: "Panel de administrador",
+      text: "Entra aquí para ver por dentro cómo trabaja el agente: qué consultó, qué emoción percibió, la transcripción completa y cómo se recuperó de cada fallo.",
+    },
   ],
   "/consola": [
     {
@@ -64,7 +69,7 @@ const STEPS: Record<string, Step[]> = {
     {
       anchors: [tid("mic-button"), tid("mic-button-composer")],
       title: "Micrófono",
-      text: "Pulsa para hablar y vuelve a pulsar para detener. Puedes interrumpir al agente cuando quieras.",
+      text: "Pulsa para hablar y vuelve a pulsar para detener. Al detener no se borra nada: si vuelves a pulsar, sigues donde ibas.",
     },
     {
       anchors: [tid("mute-button"), tid("mute-button-stage")],
@@ -80,6 +85,11 @@ const STEPS: Record<string, Step[]> = {
       anchors: ["#ask-form", tid("ask-input")],
       title: "Escribe tu pregunta",
       text: "¿Prefieres no hablar? Escribe aquí y envía con Enter.",
+    },
+    {
+      anchors: ['nav a[href="/admin"]'],
+      title: "Panel de administrador",
+      text: "Entra aquí para ver por dentro cómo trabaja el agente: qué consultó, qué emoción percibió, la transcripción completa y cómo se recuperó de cada fallo.",
     },
   ],
   "/admin": [
@@ -101,11 +111,16 @@ const STEPS: Record<string, Step[]> = {
     {
       anchors: [tid("api-panel")],
       title: "Herramientas que usó",
-      text: "Cada consulta que el agente hace a datos.gov.co, con su SoQL y el resultado.",
+      text: "Cada consulta que el agente hace a datos.gov.co: qué buscó, todo lo que devolvió la fuente y cuánto tardó.",
+    },
+    {
+      anchors: [tid("recovery-panel")],
+      title: "Recuperación ante fallos",
+      text: "Cada tropiezo (una interrupción, una corrección, la fuente caída) y lo que hizo el agente para seguir.",
     },
     {
       anchors: [tid("latency-panel")],
-      title: "Latencia",
+      title: "Tiempos de respuesta",
       text: "Cuánto tarda cada etapa de la respuesta, para detectar demoras de un vistazo.",
     },
   ],

@@ -32,8 +32,9 @@ const nav = [
         </a>
       ))
     }
-    <button type="button" class="help" data-help-tour data-testid="help-button" aria-label="Ayuda: ver el recorrido guiado" aria-haspopup="dialog" title="Ayuda">
+    <button type="button" class="help" data-help-tour data-testid="help-button" aria-haspopup="dialog" title="Ver el recorrido guiado de esta página">
       <CircleHelp aria-hidden="true" />
+      <span>¿Cómo funciona?</span>
     </button>
   </nav>
 </header>
@@ -128,15 +129,19 @@ const nav = [
   }
 
   .help {
-    display: inline-grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
     flex: none;
-    width: var(--tap);
-    height: var(--tap);
-    border: 0;
+    min-height: var(--tap);
+    padding: 0 var(--s-3);
+    border: 1px solid var(--accent);
     border-radius: var(--r-pill);
-    background: none;
-    color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    white-space: nowrap;
     transition:
       background-color 0.15s,
       color 0.15s;
@@ -160,6 +165,18 @@ const nav = [
   @media (max-width: 760px) {
     .names span {
       display: none;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .help span {
+      display: none;
+    }
+
+    .help {
+      width: var(--tap);
+      padding: 0;
+      justify-content: center;
     }
   }
 

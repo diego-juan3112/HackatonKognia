@@ -101,7 +101,66 @@ function argsLine(entry: ToolEntry): string {
   return parts.join(" · ");
 }
 
+const FIELD_LABEL: Record<string, string> = {
+  ...ARG_LABEL,
+  items: "Registros",
+  results: "Registros",
+  candidates: "Opciones",
+  sites: "Sedes",
+  areas: "Zonas",
+  total: "Total",
+  count: "Cantidad",
+  providers: "IPS",
+  provider_count: "Número de IPS",
+  site_count: "Número de sedes",
+  capacity_sum: "Suma de capacidad",
+  capacity: "Capacidad",
+  quantity: "Cantidad",
+  address: "Dirección",
+  phone: "Teléfono",
+  email: "Correo",
+  registered: "Registrada",
+  manager: "Gerente",
+  key: "Grupo",
+  value: "Valor",
+};
+
+/** Keys already drawn by the headline figure, the bars or the source line. */
+const DRAWN = new Set(["value", "groups", "unit", "resolved", "complete"]);
+
+const fieldLabel = (k: string): string => FIELD_LABEL[k] ?? k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
+function scalar(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "sin registrar";
+  if (typeof v === "boolean") return v ? "sí" : "no";
+  if (typeof v === "number") return num(v);
+  return esc(v);
+}
+
+/** Generic view of any value of the envelope's `data`: nothing the source returned is hidden. */
+function anyValue(v: unknown, depth = 0): string {
+  if (v === null || typeof v !== "object") return scalar(v);
+  if (Array.isArray(v)) {
+    if (!v.length) return "ninguno";
+    if (v.every((x) => x === null || typeof x !== "object")) return v.map(scalar).join(", ");
+    return `<ol class="records">${v.map((x) => `<li>${anyValue(x, depth + 1)}</li>`).join("")}</ol>`;
+  }
+  const rows = Object.entries(v as Record<string, unknown>)
+    .map(([k, x]) => `<div><dt>${esc(fieldLabel(k))}</dt><dd>${depth > 3 ? esc(JSON.stringify(x)) : anyValue(x, depth + 1)}</dd></div>`)
+    .join("");
+  return `<dl class="fields">${rows}</dl>`;
+}
+
+function rest(data: Record<string, unknown>): string {
+  const left = Object.fromEntries(Object.entries(data).filter(([k]) => !DRAWN.has(k)));
+  return Object.keys(left).length ? `<div class="all-data" data-testid="all-data">${anyValue(left)}</div>` : "";
+}
+
 function result(env: EvidenceEnvelope | undefined): string {
+  return env?.data ? headline(env) + rest(env.data) : "";
+}
+
+function headline(env: EvidenceEnvelope | undefined): string {
   const data = env?.data;
   if (!env || !data) return "";
   if (typeof data.resolved === "string") {

@@ -412,6 +412,16 @@ export function beginSession(conversation_id: string, engine: EngineId, model: s
   notify("reset");
 }
 
+/** Reopens a stopped conversation: the transcript and everything derived from it stay. */
+export function resumeSession(engine: EngineId, model: string, simulated: boolean): void {
+  state.running = true;
+  state.status = "connecting";
+  state.engine = engine;
+  state.model = model;
+  state.simulated = simulated;
+  notify("status", "meta");
+}
+
 export function endSession(): void {
   // Nothing else will arrive: close every partial so no bubble stays "writing" (docs/08 §10).
   let closed = false;

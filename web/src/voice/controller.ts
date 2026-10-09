@@ -444,6 +444,22 @@ export async function start(opts: { question?: string; engine?: EngineId } = {})
     return;
   }
   const id = opts.engine ?? store.getState().engine;
+  const paused = store.getState();
+  if (paused.conversation_id && paused.utterances.length > 0) {
+    // «Detener» only closed the microphone and the engine: pick the conversation up where it was.
+    const seed = buildEnvelope();
+    const resumed = createEngine(id, deps, { script: false });
+    attemptsThisTurn = 1;
+    store.resumeSession(id, resumed.model, resumed.simulated);
+    attach(resumed.engine);
+    try {
+      await resumed.engine.connect({ conversationId: paused.conversation_id, seed, style: paused.style, voiceMode: voiceFor(id) });
+    } catch {
+      return; // Cancelled by Stop/Restart while connecting.
+    }
+    if (opts.question && engine === resumed.engine) sendText(opts.question);
+    return;
+  }
   const created = createEngine(id, deps, { script: !opts.question, dropAtEnd: true });
   const conversationId = crypto.randomUUID();
   sessionStart = performance.now();

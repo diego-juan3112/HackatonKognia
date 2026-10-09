@@ -235,6 +235,40 @@
     font-weight: 700;
   }
 
+  .api-item .fields {
+    display: grid;
+    gap: 2px var(--s-3);
+    font-size: var(--t-sm);
+  }
+
+  .api-item .fields > div {
+    display: grid;
+    grid-template-columns: minmax(7rem, 30%) minmax(0, 1fr);
+    gap: var(--s-2);
+  }
+
+  .api-item .fields dt {
+    color: var(--ink-3);
+  }
+
+  .api-item .fields dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .api-item .records {
+    display: grid;
+    gap: var(--s-2);
+    padding: 0;
+    list-style: none;
+  }
+
+  .api-item .records > li {
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md, 10px);
+  }
+
   .api-item .value {
     color: var(--ink-2);
   }
