@@ -1,0 +1,25 @@
+# Preguntas del bench de latencia con consulta (scripts/bench_models.py, R-29).
+# Cada una exige una llamada a la API de datos (docs/07 §8: primer audio útil con consulta).
+# El audio se sintetiza una vez con OpenAI TTS y se guarda fuera del repo.
+questions:
+  - id: q01
+    text: "¿Cuántas IPS hay en Colombia?"
+    say: "¿Cuántas I P S hay en Colombia?"
+  - id: q02
+    text: "¿Cuántas camas hay en total?"
+  - id: q03
+    text: "¿Cuántas IPS públicas hay en Antioquia?"
+  - id: q04
+    text: "¿Qué municipios tienen más camas?"
+  - id: q05
+    text: "¿Cuántas IPS privadas hay en Bogotá?"
+  - id: q06
+    text: "¿Cuántos códigos de sede hay en Cali?"
+  - id: q07
+    text: "¿Cuántas ambulancias hay en Santander?"
+  - id: q08
+    text: "¿Cuántas IPS de nivel tres hay?"
+  - id: q09
+    text: "¿Cuántas camas de adultos hay en Medellín?"
+  - id: q10
+    text: "¿Cuántas IPS mixtas hay?"
