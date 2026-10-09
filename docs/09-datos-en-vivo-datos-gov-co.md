@@ -183,8 +183,10 @@ Buenaventura figuran como «departamentos» aparte) · `MIXED_TYPES` · `SITE_CO
 ## 6. Caché
 
 En memoria, por instancia (sin base de datos). Clave: operación + filtros validados y
-normalizados + campos + página + corte. **Fresca 60 s**; la primera consulta de una sesión y
-«Reconsultar» siempre van en vivo. Una entrada vencida solo se sirve **si la fuente falla**, hasta
+normalizados + campos + página + corte. **Fresca 60 s**; «Reconsultar» siempre va en vivo
+(`force_live`). *Cambio del 2026-10-09 (latencia, R-30):* la primera consulta de una sesión **ya
+no** se fuerza en vivo: puede salir de la precarga hecha al conectar (≤ 60 s, misma SoQL), rotulada
+`fresh` en el panel. La conexión a la fuente ya se demostró en vivo con el brief al conectar. Una entrada vencida solo se sirve **si la fuente falla**, hasta
 24 h, rotulada `stale` con `STALE_CACHE`. No se cachean resultados fallidos, parciales ni
 ambiguos. La edad de la consulta y el corte de la fuente son cosas distintas y ambas se muestran.
 Nunca se presenta una caché como consulta en vivo.
