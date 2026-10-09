@@ -1,14 +1,14 @@
-# Runtime minimo de Reto 01 (src/api/app_voice.py): lo que instala el
-# contenedor (docs/11 §5). Sin torch, sentence-transformers ni psycopg.
-# El app de voz llama a Gemini, OpenAI, Cartesia y datos.gov.co con httpx.
+# Runtime de la API (src/api/app_voice.py): lo que instalan Vercel y el
+# contenedor (docs/11). La app llama a Gemini, OpenAI, Cartesia y datos.gov.co
+# con httpx.
 #
 # MANTENER EN SINCRONIA con [project].dependencies de pyproject.toml: Vercel
 # instala desde pyproject.toml cuando existen ambos archivos (docs/11 §3).
 #
-# Base generica (RAG, Postgres, E5, Gemini via LangChain) + pruebas:
-#   pip install -r requirements-base.txt
+# Pruebas y scripts de medicion:
+#   pip install -r requirements-dev.txt
 
-# --- Core del agente (analista LangGraph; models/ports.py usa langchain-core) ---
+# --- Analista de afecto (LangGraph; langchain-core lo requiere langgraph) ---
 langgraph>=1.2,<2.0
 langchain-core>=1.6,<2.0
 
