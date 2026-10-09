@@ -4,7 +4,7 @@
                                                         |
                                                         +-> respond -> END
 
-Every node here is a generic capability from AGENTS.md section 3. Adapting to
+Every node here is a generic capability under rule R-02. Adapting to
 the real challenge domain means supplying a different DomainSpec, and -- if the
 flow genuinely needs it -- adding a node. The nodes below do not get edited.
 """

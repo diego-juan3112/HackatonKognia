@@ -2,7 +2,7 @@
 # DOMINIO DE JUGUETE — DESECHABLE
 #
 # Existe solo para validar que el pipeline corre de punta a punta
-# (AGENTS.md §4). NO es el producto y NO se le agregan features.
+# (R-07). NO es el producto y NO se le agregan features.
 # El día del reto: se escribe un YAML nuevo y este se borra.
 #
 # Nada de este archivo está hardcodeado en el código. Los nodos genéricos

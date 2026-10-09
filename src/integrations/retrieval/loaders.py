@@ -2,7 +2,7 @@
 
 Adding a format on challenge day means adding one function and one entry in
 ``_LOADERS``. Nothing else in the pipeline changes -- that is the whole point
-of AGENTS.md section 6: the RAG is designed around ingestion, not content.
+of rule R-13: the RAG is designed around ingestion, not content.
 """
 
 from __future__ import annotations

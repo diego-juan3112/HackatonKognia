@@ -2,12 +2,12 @@
 
 Lives in tests/ on purpose. The product always talks to Gemini; this exists only
 so the suite can exercise the whole graph with no network, no key and no quota
-(AGENTS.md sections 5 and 11).
+(rules R-09 and R-16).
 
 It is not a mock that returns one canned string: it reads the prompt the node
 sent and answers in the shape that node expects. That makes the whole graph
 exercisable -- classification, extraction and answering -- with no network, no
-credentials and no cost, which is what AGENTS.md section 11 requires.
+credentials and no cost, which is what rule R-16 requires.
 
 The heuristics are deliberately crude. This model exists to prove the pipeline
 is wired correctly, never to be good at the task.

@@ -20,7 +20,7 @@ class UserContext(TypedDict, total=False):
     """Who the agent is talking to.
 
     Set by chat_service from the authenticated session on every turn -- never
-    by the model (AGENTS.md section 8). The cedula is already masked: this state
+    by the model (rule R-04). The cedula is already masked: this state
     is persisted by the checkpointer, and nothing in the graph needs the full
     number.
     """

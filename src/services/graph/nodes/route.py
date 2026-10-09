@@ -1,6 +1,6 @@
 """Routing: the deterministic decision node.
 
-This node contains no LLM call at all, by design. AGENTS.md section 8 forbids
+This node contains no LLM call at all, by design. Rule R-04 forbids
 the model from driving state transitions, so the decision is a pure function of
 state plus the domain rules, and it is written into ``state["route"]`` where
 the edge function can read it.

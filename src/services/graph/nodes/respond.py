@@ -59,7 +59,7 @@ def _recent_history(state: ConversationState) -> list:
 def _user_block(state: ConversationState) -> str:
     """Tell the model who it is talking to, if the session says so.
 
-    Generic on purpose (AGENTS.md section 3): it knows there is a person with a
+    Generic on purpose (rule R-02): it knows there is a person with a
     name, not what business they came for. Only the last four digits of the
     cedula ever reach the model -- a free-tier LLM prompt is no place for a
     full national ID number.

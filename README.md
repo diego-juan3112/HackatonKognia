@@ -6,10 +6,10 @@ y que sabe con quién está hablando.
 
 **No sabemos el reto todavía.** Puede ser PQR o atención financiera, por voz o
 por video. Por eso el núcleo modela capacidades genéricas y nada de un dominio
-concreto. Ver `AGENTS.md` §0 y `ARCHITECTURE.md`.
+concreto. Ver [docs/00-contexto-y-decisiones.md](docs/00-contexto-y-decisiones.md) y [docs/01-arquitectura.md](docs/01-arquitectura.md).
 
 > Para entender el proyecto a fondo — qué hace cada archivo, el flujo completo,
-> las advertencias — lee **`ARCHITECTURE.md`**.
+> las advertencias — lee **[docs/01-arquitectura.md](docs/01-arquitectura.md)**.
 
 ## Arranque
 
@@ -33,12 +33,12 @@ desde la caché sin tocar la red.
 > **Windows: arranca el servidor con `python -m scripts.serve`.**
 > psycopg no funciona sobre el event loop por defecto de Windows, y uvicorn
 > construye el suyo ignorando la política de asyncio. `scripts/serve.py` le pasa
-> la factory correcta. Detalle en `ARCHITECTURE.md` §4.4.
+> la factory correcta. Detalle en [docs/01-arquitectura.md](docs/01-arquitectura.md) §4.4.
 
 ## Probarlo
 
 Documentación interactiva en **http://localhost:8000/docs**. Qué significa cada
-campo y qué hacer con cada error está en [API.md](API.md). O con curl:
+campo y qué hacer con cada error está en [docs/03-api.md](docs/03-api.md). O con curl:
 
 ```bash
 # 1. Crear un usuario
@@ -81,7 +81,7 @@ intake → classify_intent → collect_data → route ─┬→ retrieve_context
                                                  └→ respond
 ```
 
-La regla que sostiene el diseño (`AGENTS.md` §8): **el LLM nunca decide una
+La regla que sostiene el diseño (R-04): **el LLM nunca decide una
 transición.** Clasifica y redacta; la arista condicional es una función pura que
 lee `state["route"]`.
 
@@ -100,4 +100,4 @@ lee `state["route"]`.
 
 Pendiente: el Terraform de `infra/terraform/` todavía no incluye PostgreSQL ni
 el modelo E5. Es la siguiente fase. `terraform apply` es siempre manual
-(`AGENTS.md` §12).
+([docs/06-flujo-y-convenciones.md](docs/06-flujo-y-convenciones.md), R-21).

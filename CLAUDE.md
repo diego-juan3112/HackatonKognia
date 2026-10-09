@@ -1,7 +1,7 @@
 # CLAUDE.md
 Este proyecto sigue las reglas de @AGENTS.md — léelo completo antes de
-cualquier acción. Lo de abajo es específico de Claude Code, no reemplaza
-nada de AGENTS.md.
+cualquier acción, y el documento de `docs/` que indique para la tarea.
+Lo de abajo es específico de Claude Code, no reemplaza nada de AGENTS.md.
 
 ## Herramientas activas en este entorno
 - MCP: Azure MCP, Terraform MCP, Context7 — se usan automáticamente
@@ -14,7 +14,7 @@ nada de AGENTS.md.
 - `.claude/skills/azure-voice-live/SKILL.md` (versionada en el repo, no en
   `~/.claude/`) — patrón de integración con Voice Live API destilado del
   módulo de Microsoft Learn "Develop a voice live agent".
-  **Azure Voice Live quedó descartado por costo** (AGENTS.md §1.3), así que
+  **Azure Voice Live quedó descartado por costo** (D-01), así que
   sus detalles de protocolo ya no aplican. Sigue siendo útil como referencia
   del patrón puerto/adaptador para voz en tiempo real; el contrato vigente es
   `VoicePort` en `src/models/ports.py`.

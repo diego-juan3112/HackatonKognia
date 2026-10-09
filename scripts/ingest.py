@@ -1,6 +1,6 @@
 """Reindex the knowledge base into PostgreSQL + pgvector.
 
-AGENTS.md section 6: ingestion must be one repeatable command, because on
+Rule R-12: ingestion must be one repeatable command, because on
 challenge day we get handed documents and need them searchable immediately.
 
     python -m scripts.ingest --path docs/faq_demo

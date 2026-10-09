@@ -1,6 +1,6 @@
 """Conditional edges.
 
-AGENTS.md section 8: the graph controls the flow, never the model. Every
+Rule R-04: the graph controls the flow, never the model. Every
 function here is a pure function of state -- no LLM call, no I/O, no clock.
 That is what makes the routing testable and predictable, and it is the main
 reason this graph is hand-built instead of using ``create_react_agent`` (where

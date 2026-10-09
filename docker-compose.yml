@@ -8,7 +8,7 @@
 # Puerto 5433 a proposito: tu PostgreSQL nativo sigue en 5432, intacto.
 #
 # La contrasena por defecto es de desarrollo local. Se puede sobreescribir
-# desde .env sin tocar este archivo (AGENTS.md seccion 8).
+# desde .env sin tocar este archivo (R-05).
 
 services:
   db:

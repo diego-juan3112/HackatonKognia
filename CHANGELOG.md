@@ -5,6 +5,31 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-07
+
+### Changed
+- **Contratos del proyecto reorganizados.** `AGENTS.md` pasa de 293 líneas a
+  un índice corto: qué documento leer antes de cada tarea y las reglas en una
+  línea cada una. El detalle vive en `docs/` numerados:
+  `00-contexto-y-decisiones`, `01-arquitectura` (antes `ARCHITECTURE.md`),
+  `02-puertos`, `03-api` (antes `API.md`), `04-rag`, `05-pruebas` y
+  `06-flujo-y-convenciones`.
+- **Reglas y decisiones con código rastreable**: `R-01` a `R-21` para reglas
+  duras y `D-01` a `D-08` para decisiones tomadas. Código, comentarios, READMEs
+  y configuración citan ahora el código en vez de `AGENTS.md §N`. No se agregó
+  ninguna regla nueva: solo se reubicaron y numeraron las existentes.
+- **R-05 alineada con el código:** las variables de entorno se leen solo en
+  `src/config.py` (antes decía "solo en `integrations/`", que el código nunca
+  cumplió). Verificado: ningún otro módulo de `src/` ni `scripts/` lee el entorno.
+- Los diagramas de `archify` viven en `docs/diagrams/` dentro del repo; se
+  abandona `../HackatonKognia-docs/`.
+
+### Added
+- `docs/00-contexto-y-decisiones.md` registra las mediciones del 2026-10-06
+  con la key del proyecto: TTS (`gemini-3.8-flash-*-tts`, ~2.5-3 s), STT
+  (`gemini-3.5-transcribe`, 2 s), visión, tool calling y embeddings de Gemini;
+  y los modelos que responden 404.
+
 ## [0.4.1] - 2026-09-29
 
 ### Added

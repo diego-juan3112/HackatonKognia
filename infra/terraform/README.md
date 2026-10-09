@@ -46,7 +46,7 @@ terraform apply -var="container_image=$ACR/agent:latest"
 ```
 
 `terraform apply` lo ejecuta siempre una persona, nunca un agente ni un pipeline
-(AGENTS.md §12).
+(R-21).
 
 ## Variables
 

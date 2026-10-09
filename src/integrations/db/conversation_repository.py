@@ -1,7 +1,7 @@
 """ConversationRepositoryPort over PostgreSQL.
 
 Owns the readable history. The LangGraph checkpointer owns the graph's internal
-state separately -- see ARCHITECTURE.md for why both exist.
+state separately -- see docs/01-arquitectura.md section 6 for why both exist.
 """
 
 from __future__ import annotations
