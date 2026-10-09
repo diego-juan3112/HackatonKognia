@@ -8,6 +8,7 @@
 //   GET  /health
 //   POST /sessions
 //   POST /realtime/session     real ephemeral credential (OpenAI or Gemini)
+//   POST /speech/session       real Cartesia access token for the cloned voice
 //   GET  /dataset/brief        live SODA3 queries
 //   POST /tools/aggregate_ips  live SODA3 query + evidence envelope
 //   POST /tools/search_ips     live SODA3 query + evidence envelope (basic)
@@ -63,6 +64,11 @@ function loadEnv() {
 const env = loadEnv();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || env.OPENAI_API_KEY || "";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || "";
+const CARTESIA_API_KEY = process.env.CARTESIA_API_KEY || env.CARTESIA_API_KEY || "";
+const CARTESIA_VOICE_ID = process.env.CARTESIA_VOICE_ID || env.CARTESIA_VOICE_ID || "";
+const CARTESIA_VERSION = "2026-08-14";
+const CARTESIA_MODEL = process.env.CARTESIA_MODEL || env.CARTESIA_MODEL || "sonic-3.6";
+const CLONED_AVAILABLE = CARTESIA_API_KEY !== "" && CARTESIA_VOICE_ID !== "" && OPENAI_API_KEY !== "";
 const SESSION_SECRET = randomBytes(32);
 
 // ── Agent instructions: prompt `reto01-ips-v1`, docs/10 §7 (verbatim) ────────
@@ -588,7 +594,7 @@ class HttpError extends Error {
 
 const upstreamStatus = (s) => (s === 429 ? new HttpError(429, "ENGINE_QUOTA", "El proveedor rechazó la credencial por cuota.", true) : new HttpError(503, "ENGINE_CONNECT_FAILED", `El proveedor respondió ${s} al emitir la credencial.`, true));
 
-async function mintOpenAI(instructions) {
+async function mintOpenAI(instructions, textOnly = false) {
   if (!OPENAI_API_KEY) throw new HttpError(503, "ENGINE_CONNECT_FAILED", "Falta OPENAI_API_KEY en .env.");
   const turnDetection = { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500, create_response: true, interrupt_response: true };
   const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
@@ -600,10 +606,11 @@ async function mintOpenAI(instructions) {
         type: "realtime",
         model: OPENAI_MODEL,
         instructions,
-        output_modalities: ["audio"],
+        // Cloned voice (docs/08 §15): the engine writes text only; the browser synthesizes it.
+        output_modalities: textOnly ? ["text"] : ["audio"],
         audio: {
           input: { format: { type: "audio/pcm", rate: 24000 }, transcription: { model: "gpt-4o-mini-transcribe", language: "es" }, turn_detection: turnDetection },
-          output: { format: { type: "audio/pcm", rate: 24000 }, voice: "marin" },
+          ...(textOnly ? {} : { output: { format: { type: "audio/pcm", rate: 24000 }, voice: "marin" } }),
         },
         tools: TOOLS.map((t) => ({ type: "function", ...t })),
         tool_choice: "auto",
@@ -626,7 +633,7 @@ async function mintOpenAI(instructions) {
     config: {
       audio: { input: { encoding: "pcm16", sample_rate: 24000 }, output: { encoding: "pcm16", sample_rate: 24000 } },
       voice: "marin",
-      voice_mode: "engine",
+      voice_mode: textOnly ? "cloned" : "engine",
       turn_detection: turnDetection,
     },
   };
@@ -679,6 +686,44 @@ async function mintGemini(instructions) {
   };
 }
 
+/** Short-lived, synthesis-only Cartesia access token (docs/08 §15.3). The API key never leaves this process. */
+// Dev shortcut: a minted token is reused for 5 of its 10 minutes, so a slow provider call
+// does not eat the 3 s the client gives the synthesizer to connect (docs/08 §15.6).
+let cartesiaCache = null;
+
+async function mintCartesia() {
+  if (!CARTESIA_API_KEY || !CARTESIA_VOICE_ID) throw new HttpError(503, "SYNTH_UNAVAILABLE", "La voz clonada no está configurada.");
+  if (cartesiaCache && Date.now() - cartesiaCache.at < 300e3) return cartesiaCache.grant;
+  let res;
+  try {
+    res = await fetch("https://api.cartesia.ai/access-token", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${CARTESIA_API_KEY}`, "Cartesia-Version": CARTESIA_VERSION, "Content-Type": "application/json" },
+      body: JSON.stringify({ grants: { tts: true }, expires_in: 600 }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    throw new HttpError(503, "SYNTH_UNAVAILABLE", "No se pudo contactar el sintetizador de voz.", true);
+  }
+  if (!res.ok) throw new HttpError(503, "SYNTH_UNAVAILABLE", `El sintetizador respondió ${res.status} al emitir la credencial.`, true);
+  const json = await res.json();
+  if (typeof json.token !== "string" || !json.token) throw new HttpError(503, "SYNTH_UNAVAILABLE", "El sintetizador no devolvió credencial.", true);
+  const grant = {
+    contract: CONTRACT,
+    synth: "cartesia",
+    model: CARTESIA_MODEL,
+    connect: {
+      url: `wss://api.cartesia.ai/tts/websocket?cartesia_version=${CARTESIA_VERSION}`,
+      token: json.token,
+      expires_at: new Date(Date.now() + 600e3).toISOString(),
+    },
+    config: { audio: { encoding: "pcm_s16le", sample_rate: 24000, container: "raw" }, voice_id: CARTESIA_VOICE_ID, language: "es", timestamps: true },
+    voice_label: "Voz clonada (Cartesia)",
+  };
+  cartesiaCache = { at: Date.now(), grant };
+  return grant;
+}
+
 // ── HTTP plumbing ────────────────────────────────────────────────────────────
 
 function signToken(expiresAt) {
@@ -721,7 +766,7 @@ function send(res, origin, status, body) {
 async function route(req, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (req.method === "GET" && path === "/health") {
-    return [200, { status: "ok", contract: CONTRACT, dev_backend: true, voice_modes: ["engine"], engines: { openai: OPENAI_API_KEY !== "", gemini: GEMINI_API_KEY !== "" } }];
+    return [200, { status: "ok", contract: CONTRACT, dev_backend: true, voice_modes: CLONED_AVAILABLE ? ["engine", "cloned"] : ["engine"], default_voice_mode: CLONED_AVAILABLE ? "cloned" : "engine", cloned_voice_engines: CLONED_AVAILABLE ? ["openai"] : [], engines: { openai: OPENAI_API_KEY !== "", gemini: GEMINI_API_KEY !== "" } }];
   }
   if (req.method === "POST" && path === "/sessions") {
     const expiresAt = Date.now() + 2 * 3600e3;
@@ -740,8 +785,14 @@ async function route(req, url) {
     const body = await readJson(req);
     if (body.engine !== "openai" && body.engine !== "gemini") throw new HttpError(422, "INVALID_ENGINE", "engine debe ser openai o gemini.");
     const instructions = buildInstructions(body.style);
-    const minted = body.engine === "openai" ? await mintOpenAI(instructions) : await mintGemini(instructions);
+    // Gemini Live rejects text-only output (G2): it always answers with its own voice.
+    const textOnly = body.voice_mode === "cloned" && CLONED_AVAILABLE;
+    const minted = body.engine === "openai" ? await mintOpenAI(instructions, textOnly) : await mintGemini(instructions);
     return [200, { contract: CONTRACT, ...minted, instructions_version: INSTRUCTIONS_VERSION }];
+  }
+  if (req.method === "POST" && path === "/speech/session") {
+    await readJson(req);
+    return [200, await mintCartesia()];
   }
   if (req.method === "POST" && path.startsWith("/tools/")) {
     const name = decodeURIComponent(path.slice("/tools/".length));
@@ -781,7 +832,8 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`[dev-backend] SOLO DESARROLLO · http://localhost:${PORT} · contrato ${CONTRACT}`);
-  console.log(`[dev-backend] claves: openai=${OPENAI_API_KEY ? "sí" : "NO"} gemini=${GEMINI_API_KEY ? "sí" : "NO"} (leídas de .env, nunca se imprimen)`);
+  console.log(`[dev-backend] claves: openai=${OPENAI_API_KEY ? "sí" : "NO"} gemini=${GEMINI_API_KEY ? "sí" : "NO"} cartesia=${CARTESIA_API_KEY && CARTESIA_VOICE_ID ? "sí" : "NO"} (leídas de .env, nunca se imprimen)`);
+  if (CLONED_AVAILABLE) mintCartesia().then(() => console.log("[dev-backend] voz clonada lista"), () => console.log("[dev-backend] no se pudo precalentar la voz clonada"));
   // Warm the datos.gov.co connection and the lexicon (docs/09 §2: first connection can be slow).
   getLexicon().then(
     (lex) => console.log(`[dev-backend] léxico listo: ${lex.departments.size} departamentos, ${lex.municipalities.size} municipios`),
