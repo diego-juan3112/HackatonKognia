@@ -1,0 +1,27 @@
+# Style policy (docs/10 section 6, D-16). Deterministic: the first matching rule wins and
+# the explicit preference always goes first. Changes tone and length, never facts.
+styles:
+  directo:   { directives: ["Responde en una o dos frases.", "Da primero la cifra.", "Sin rodeos."] }
+  calido:    { directives: ["Reconoce brevemente lo que siente la persona.", "Tono cercano y paciente."] }
+  didactico: { directives: ["Explica paso a paso con un ejemplo corto.", "Define IPS, sede y capacidad instalada."] }
+  neutro:    { directives: [] }
+rules:
+  - { when: { explicit_preference: concise }, style: directo,   reason: "Pediste respuestas más directas" }
+  - { when: { explicit_preference: warm },    style: calido,    reason: "Pediste un tono más cercano" }
+  - { when: { explicit_preference: explain }, style: didactico, reason: "Pediste que te explique paso a paso" }
+  - { when: { state_hint: frustración },      style: directo,   reason: "Parece frustrado: respuestas más breves y al grano" }
+  - { when: { state_hint: confusión },        style: didactico, reason: "Parece confundido: explico paso a paso" }
+  - { when: { sentiment: negative, emotion: tristeza }, style: calido, reason: "Parece triste: tono más cercano" }
+  - { when: { state_hint: prisa },            style: directo,   reason: "Parece tener prisa: respuestas más breves" }
+  - { default: neutro, reason: "Sin señales claras: estilo neutro" }
+smoothing: { min_consecutive_signals: 2, explicit_preference_applies_immediately: true, decay_turns: 4 }
+# Explicit preferences spoken by the user (deterministic, no LLM). Normalised text, no accents.
+explicit_patterns:
+  concise: ["mas directo", "al grano", "mas corto", "mas breve", "resume", "sin rodeos"]
+  warm:    ["mas amable", "con calma", "mas despacio", "con paciencia"]
+  explain: ["explicame", "paso a paso", "explica mejor", "no entiendo que significa"]
+# An explicit declaration beats the inference for state_hint (docs/10 section 6, "Fusión").
+explicit_state:
+  frustración: ["estoy frustrad", "me frustra", "estoy molest", "estoy cansad de"]
+  confusión:   ["estoy confundid", "me confundes", "me estas confundiendo", "no entiendo"]
+  prisa:       ["tengo prisa", "estoy de afan", "rapido por favor"]
