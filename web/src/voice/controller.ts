@@ -46,6 +46,10 @@ let sessionStart = 0;
 let localSeq = 0;
 let attemptsThisTurn = 1;
 let pendingQuestion: string | null = null;
+/** The engine reached a working state at least once in this session. */
+let everConnected = false;
+/** Question to ask again when «Reintentar» restarts a session that could not start. */
+let retryQuestion: string | null = null;
 /** Greeting heard briefly before a question asked at start interrupts it. */
 const GREETING_GRACE_MS = 1200;
 let pendingTimer: ReturnType<typeof setTimeout> | undefined;
@@ -215,9 +219,14 @@ function afterEvent(ev: AnyEngineEvent): void {
       pendingTimer = setTimeout(flushPendingQuestion, GREETING_GRACE_MS);
     }
   } else if (ev.type === "status") {
+    if (ev.payload.state === "listening" || ev.payload.state === "thinking" || ev.payload.state === "speaking") everConnected = true;
     if (ev.payload.state === "listening" && pendingQuestion) flushPendingQuestion();
   } else if (ev.type === "error") {
     const code = ev.payload.code;
+    if (!everConnected && (code === "ENGINE_CONNECT_FAILED" || code === "ENGINE_QUOTA")) {
+      failStart();
+      return;
+    }
     if (ev.payload.retryable && (code === "ENGINE_DROPPED" || code === "ENGINE_CONNECT_FAILED" || code === "ENGINE_QUOTA")) {
       void switchEngine(otherEngine(store.getState().engine), code, true);
     }
@@ -248,6 +257,33 @@ async function verifyTurn(utteranceId: string, text: string, turnId: string): Pr
   if (!result || result.grounded || store.getState().conversation_id !== s.conversation_id) return;
   store.markUnverified(utteranceId, result.unsupported);
   if (result.correction && engine?.sendSystemNote) engine.sendSystemNote(result.correction);
+}
+
+/**
+ * The session could not start (backend or engine down): one human notice with
+ * «Reintentar», the question stays on screen and the button goes back to «Hablar».
+ */
+function failStart(): void {
+  retryQuestion = pendingQuestion ?? pendingEcho?.text ?? null;
+  showEcho();
+  const previous = engine;
+  detach();
+  engine = null;
+  pendingQuestion = null;
+  pendingEcho = null;
+  clearTimeout(pendingTimer);
+  pendingTimer = undefined;
+  void previous?.disconnect("start_failed");
+  store.endSession();
+  store.clearErrors();
+  store.pushNotice("error", "No pude conectarme con el servicio de voz en este momento. Revisa tu conexión y pulsa Reintentar.", now(), true);
+}
+
+/** «Reintentar» after a failed start: same question, new session. */
+export function retry(): void {
+  const q = retryQuestion;
+  retryQuestion = null;
+  void start(q ? { question: q } : {});
 }
 
 // ── Analyst and style ────────────────────────────────────────────────────────
@@ -413,6 +449,7 @@ export async function start(opts: { question?: string; engine?: EngineId } = {})
   sessionStart = performance.now();
   localSeq = 0;
   attemptsThisTurn = 1;
+  everConnected = false;
   verifiedTurns.clear();
   clearTimeout(pendingTimer);
   pendingTimer = undefined;

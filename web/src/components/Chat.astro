@@ -102,7 +102,7 @@ const questions = brief.suggested_questions.slice(0, 4);
       key: `n-${n.id}`,
       cls: "msg system",
       testid: "chat-error",
-      html: `<p>${icon("triangle-alert")}<span>${esc(n.text)}</span></p>`,
+      html: `<p>${icon("triangle-alert")}<span>${esc(n.text)}</span>${n.retry ? '<button type="button" class="retry-btn" data-retry data-testid="retry-button">Reintentar</button>' : ""}</p>`,
     };
   }
 
@@ -157,6 +157,9 @@ const questions = brief.suggested_questions.slice(0, 4);
       if (!getState().running) void controller.start();
     });
     byId("btn-consent-off")?.addEventListener("click", () => setAnalysisWanted(false));
+    msgs?.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("button[data-retry]")) controller.retry();
+    });
 
     const renderControls = (s: ConsoleState): void => {
       renderConsent(s);
@@ -449,6 +452,16 @@ const questions = brief.suggested_questions.slice(0, 4);
 
   .consent .ai-badge {
     color: var(--ink-3);
+  }
+
+  .retry-btn {
+    margin-left: auto;
+    padding: 0.15rem var(--s-3);
+    border: 1px solid currentColor;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: inherit;
+    font-weight: 650;
   }
 
   .bubble mark.unverified {

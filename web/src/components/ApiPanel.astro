@@ -10,11 +10,16 @@
     <h2 id="api-title">API en vivo <b class="count num" id="api-count" hidden></b></h2>
     <p id="api-origin"></p>
   </header>
+  <details class="tool-catalog" id="tool-catalog" data-testid="tool-catalog">
+    <summary>Herramientas disponibles <b class="num" id="tool-catalog-count"></b></summary>
+    <ul id="tool-catalog-list"></ul>
+  </details>
+  <div class="tool-turns" id="tool-turns" data-testid="tool-turns"></div>
   <ol class="api-list board-scroll" id="api-list" aria-live="polite" tabindex="0" aria-label="Consultas a datos.gov.co"></ol>
 </section>
 
 <script>
-  import { bind, byId, panel, reconcile } from "../scripts/dom";
+  import { bind, byId, dur, esc, panel, reconcile } from "../scripts/dom";
   import { evidenceBody } from "../scripts/evidence";
   import { USING_MOCKS } from "../voice/api";
   import * as controller from "../voice/controller";
@@ -29,7 +34,38 @@
       const id = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-requery]")?.dataset.requery;
       if (id) void controller.requery(id);
     });
-    return bind(["tools"], (s) => {
+    const catalogCount = byId("tool-catalog-count");
+    const catalogList = byId("tool-catalog-list");
+    const turnsBox = byId("tool-turns");
+    const unbindCatalog = bind(["tools", "meta"], (s) => {
+      if (catalogCount) catalogCount.textContent = String(s.toolCatalog.length);
+      if (catalogList) {
+        catalogList.innerHTML = s.toolCatalog.length
+          ? s.toolCatalog.map((t) => `<li><code>${esc(t.name)}</code> <span>${esc(t.description)}</span></li>`).join("")
+          : "<li>El backend no anunció su catálogo (GET /health).</li>";
+      }
+      if (turnsBox) {
+        // Per turn: which tools the agent used, with status, time, rows and cache.
+        const byTurn = new Map<string, typeof s.tools>();
+        for (const t of s.tools) {
+          const k = t.turn_id ?? "—";
+          byTurn.set(k, [...(byTurn.get(k) ?? []), t]);
+        }
+        const rows = [...byTurn.entries()].reverse().map(([turnId, tools]) => {
+          const n = s.turns.find((x) => x.turn_id === turnId)?.n;
+          return tools
+            .map(
+              (t, i) =>
+                `<tr>${i === 0 ? `<th rowspan="${tools.length}">${n ? `Turno ${n}` : "—"}</th>` : ""}<td><code>${esc(t.name)}</code></td><td class="st-${esc(t.status ?? "pending")}">${esc(t.status ?? "en curso")}</td><td>${t.trace ? dur(t.trace.ms) : "—"}</td><td>${t.trace ? esc(t.trace.rows) : "—"}</td><td>${t.trace ? esc(t.trace.cache_status === "live" ? "en vivo" : t.trace.cache_status) : "—"}</td></tr>`,
+            )
+            .join("");
+        });
+        turnsBox.innerHTML = rows.length
+          ? `<table><caption>Herramientas por turno</caption><thead><tr><th>Turno</th><th>Herramienta</th><th>Estado</th><th>Tiempo</th><th>Filas</th><th>Caché</th></tr></thead><tbody>${rows.join("")}</tbody></table>`
+          : "";
+      }
+    });
+    const unbindList = bind(["tools"], (s) => {
       const count = byId("api-count");
       if (count) {
         count.hidden = s.tools.length === 0;
@@ -49,10 +85,53 @@
           : [{ key: "empty", cls: "board-empty", html: "Cada consulta aparece aquí con su SoQL, tiempo, filas, fuente y corte." }],
       );
     });
+    return () => {
+      unbindCatalog();
+      unbindList();
+    };
   });
 </script>
 
 <style is:global>
+  .tool-catalog,
+  .tool-turns {
+    margin: 0 var(--s-4) var(--s-3);
+    font-size: var(--t-xs);
+  }
+
+  .tool-catalog summary {
+    cursor: pointer;
+    font-weight: 650;
+  }
+
+  .tool-catalog ul {
+    display: grid;
+    gap: 2px;
+    margin-top: var(--s-2);
+  }
+
+  .tool-turns table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .tool-turns caption {
+    text-align: left;
+    font-weight: 650;
+    padding-bottom: var(--s-1);
+  }
+
+  .tool-turns th,
+  .tool-turns td {
+    padding: 2px var(--s-1);
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .tool-turns .st-ok { color: var(--accent-ink); }
+  .tool-turns .st-unavailable,
+  .tool-turns .st-invalid { color: var(--danger); }
+
   .api .count {
     display: inline-block;
     min-width: 1.5rem;

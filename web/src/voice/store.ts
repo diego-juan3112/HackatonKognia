@@ -97,6 +97,8 @@ export interface Notice {
   t: number;
   kind: "session" | "error" | "info";
   text: string;
+  /** Shows «Reintentar»: the session could not start. */
+  retry?: boolean;
 }
 
 export interface ConsoleState {
@@ -434,7 +436,8 @@ export function reset(): void {
 
 export function setEngine(engine: EngineId, model: string, simulated: boolean): void {
   state.engine = engine;
-  state.model = model;
+  // The backend's model id wins over the one fixed in the client (GET /health).
+  state.model = (!simulated && state.engineModels[engine]) || model;
   state.simulated = simulated;
   notify("meta");
 }
@@ -511,8 +514,15 @@ export function invalidateTurn(turn_id: string | null): void {
   notify("tools");
 }
 
-export function pushNotice(kind: Notice["kind"], text: string, t = 0): void {
+export function pushNotice(kind: Notice["kind"], text: string, t = 0, retry = false): void {
   addNotice(kind, text, t);
+  if (retry) state.notices[state.notices.length - 1]!.retry = true;
+  notify("notices");
+}
+
+/** Drops the error notices of the current conversation (before one human-readable notice replaces them). */
+export function clearErrors(): void {
+  state.notices = state.notices.filter((n) => n.kind !== "error");
   notify("notices");
 }
 

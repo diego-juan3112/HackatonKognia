@@ -448,7 +448,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
   /** The provider (or the local fallback) heard the user start talking. */
   protected userSpeechStarted(key: string, tStart: number = this.now()): void {
     this.mark("user_speech_started");
-    if (this.bargeConfirmMs > 0 && this.agentAudible()) {
+    if (this.bargeConfirmMs > 0 && (this.agentAudible() || this.pendingTools > 0)) {
       // The 1-second rule: duck the agent and wait; noise must not cut it.
       this.cancelBargeCandidate(false);
       this.player?.duck(DUCK_LEVEL);
