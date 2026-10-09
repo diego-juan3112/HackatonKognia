@@ -11,6 +11,7 @@
 import { ApiError, requestRealtimeSession, type RealtimeSessionGrant } from "./api";
 import { getMicTap, MicError, type MicRate, type MicTap } from "./audio/mic-tap";
 import { getPlayer, type PcmPlayer } from "./audio/player";
+import { CartesiaSynthesizer, takeSentences, type SpeechSynthesizer, type SynthWord } from "./cartesia-synth";
 import type { EngineDeps } from "./fake-engine";
 import type {
   ContextEnvelope,
@@ -63,6 +64,11 @@ interface Generation {
   fromNoise: string | null;
   /** Audio held while `fromNoise` is undecided. */
   held: Int16Array[];
+  /** Cloned voice: chars of `text` already handed to the synthesizer, and whether audio is still owed. */
+  synthSent: number;
+  synthPending: boolean;
+  synthClosed: boolean;
+  words: SynthWord[];
 }
 
 interface UserUtterance {
@@ -131,6 +137,9 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
   private style: StyleDecision | undefined;
 
   private player: PcmPlayer | null = null;
+  /** Cloned voice (docs/08 §15): the engine gives text, the synthesizer the audio. */
+  private synth: SpeechSynthesizer | null = null;
+  private releaseSynth: (() => void)[] = [];
   private mic: MicTap | null = null;
   private releasePlayer: (() => void) | null = null;
   private releaseMicFrames: (() => void) | null = null;
@@ -187,7 +196,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     const epoch = ++this.epoch;
     this.conversationId = opts.conversationId;
     this.style = opts.style;
-    this.voiceMode = "engine"; // the cloned voice (docs/08 §15) is not wired yet
+    this.voiceMode = opts.voiceMode === "cloned" && this.supportsClonedVoice ? "cloned" : "engine";
     if (opts.seed) this.stateVersion = opts.seed.state.state_version;
     this.setStatus(opts.seed ? "renewing" : "connecting");
 
@@ -210,10 +219,10 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
       : Promise.resolve("off");
 
     try {
-      const [grant, brief] = await Promise.all([
-        this.requestGrant(),
-        opts.seed ? Promise.resolve(null) : this.deps.getBrief().then((b) => b.spoken_brief, () => null),
-      ]);
+      const briefP = opts.seed ? Promise.resolve(null) : this.deps.getBrief().then((b) => b.spoken_brief, () => null);
+      // The synthesizer first: the engine's credential depends on the voice (text only when cloned).
+      if (this.voiceMode === "cloned") await this.openSynth(epoch);
+      const [grant, brief] = await Promise.all([this.requestGrant(), briefP]);
       this.alive(epoch);
       this.transportSerial++;
       await this.openTransport(grant);
@@ -292,6 +301,66 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     this.bargeIn(false);
     this.expecting = false;
     this.refreshStatus();
+  }
+
+  /** Adapters whose engine can produce text only (the cloned voice needs it). */
+  protected get supportsClonedVoice(): boolean {
+    return false;
+  }
+
+  /** Opens and warms the synthesizer; any failure falls back to the engine voice (docs/08 §15.6). */
+  private async openSynth(epoch: number): Promise<void> {
+    const synth = new CartesiaSynthesizer();
+    try {
+      await synth.connect(this.conversationId);
+    } catch (err) {
+      void synth.disconnect();
+      this.alive(epoch);
+      this.voiceMode = "engine";
+      const quota = err instanceof ApiError && (err.status === 429 || err.code === "SYNTH_QUOTA");
+      this.emit("error", { code: quota ? "SYNTH_QUOTA" : "SYNTH_CONNECT_FAILED", message: "La voz clonada no está disponible: sigo con la voz del motor.", retryable: false });
+      this.emit("session", { event: "voice_changed", from: "cloned", to: "engine", reason: "la voz clonada no respondió", attempt: 0 });
+      return;
+    }
+    if (epoch !== this.epoch) {
+      void synth.disconnect();
+      this.alive(epoch);
+    }
+    this.synth = synth;
+    if (import.meta.env.DEV) (globalThis as { __synthStats?: unknown }).__synthStats = synth.stats;
+    this.releaseSynth = [
+      synth.on("audio", (ev) => this.agentAudio(ev.generation_id, ev.pcm)),
+      synth.on("words", (ev) => {
+        const gen = this.generations.get(ev.generation_id);
+        if (gen && !gen.discarded) gen.words.push(...ev.words);
+      }),
+      synth.on("done", (ev) => {
+        const gen = this.generations.get(ev.generation_id);
+        if (!gen) return;
+        gen.synthPending = false;
+        if (gen.providerDone && !this.queuedGenerations.has(gen.id) && !gen.discarded) this.stopSpeech(gen);
+        this.refreshStatus();
+      }),
+      synth.on("error", (ev) => {
+        if (ev.code === "SYNTH_DROPPED") console.warn(`[voice:${this.id}] cloned voice dropped`);
+      }),
+    ];
+  }
+
+  /** Hands the new whole sentences of a generation to the synthesizer. */
+  private feedSynth(gen: Generation, final: boolean): void {
+    const synth = this.synth;
+    if (!synth || gen.discarded || gen.synthClosed) return;
+    if (final) gen.synthClosed = true;
+    const fresh = gen.text.slice(gen.synthSent);
+    const { ready, rest } = takeSentences(fresh, final);
+    gen.synthSent += fresh.length - rest.length;
+    if (ready.length === 0) {
+      if (final && gen.synthPending) synth.speak(gen.id, "", { final: true });
+      return;
+    }
+    gen.synthPending = true;
+    ready.forEach((s, i) => synth.speak(gen.id, `${s} `, { final: final && i === ready.length - 1 }));
   }
 
   /** Opens or closes the microphone mid-session (explicit voice consent, R-26). */
@@ -521,6 +590,10 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
       discarded: false,
       fromNoise: this.noiseKeys.size > 0 ? [...this.noiseKeys].at(-1) ?? null : null,
       held: [],
+      synthSent: 0,
+      synthPending: false,
+      synthClosed: false,
+      words: [],
     });
     if (this.generations.size > 24) {
       const oldest = this.generations.keys().next().value;
@@ -564,6 +637,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     if (!gen || gen.discarded) return;
     gen.text = opts.append ? gen.text + text : text;
     gen.textFinal = gen.textFinal || opts.final;
+    if (this.synth) this.feedSynth(gen, opts.final);
     if (gen.fromNoise) return; // shown once the blip is settled
     this.emitAgentText(gen, gen.textFinal);
   }
@@ -615,6 +689,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     if (!gen || gen.providerDone) return;
     gen.providerDone = true;
     if (gen.discarded) return;
+    if (this.synth) this.feedSynth(gen, true);
     if (gen.fromNoise) {
       gen.textFinal = true;
       return; // settled by settleNoise()
@@ -629,7 +704,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
       turn.latency.t_first_useful_audio = gen.firstAudioAt;
       this.emitLatency(turn);
     }
-    if (!this.queuedGenerations.has(id)) this.stopSpeech(gen);
+    if (!this.queuedGenerations.has(id) && !gen.synthPending) this.stopSpeech(gen);
     this.refreshStatus();
   }
 
@@ -824,7 +899,7 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     const gen = this.generations.get(id);
     if (!gen || gen.discarded) return;
     // An underrun while the provider is still generating is not the end of the speech.
-    if (gen.providerDone) this.stopSpeech(gen);
+    if (gen.providerDone && !gen.synthPending) this.stopSpeech(gen);
     this.refreshStatus();
   }
 
@@ -869,12 +944,18 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     const wasSpeaking = gen.speechStarted && !gen.speechStopped;
     gen.discarded = true;
     gen.speechStopped = true;
+    if (this.synth) this.synth.cancel(gen.id);
+    gen.synthPending = false;
     if (gen.audioMs > 0 || gen.text.trim()) {
-      const delivered = deliveredText(gen.text, playedMs, gen.audioMs);
+      // With the cloned voice the synthesizer gives word timings: what was heard is exact.
+      const timed = gen.words.length > 0;
+      const delivered = timed
+        ? gen.words.filter((w) => w.end_ms <= playedMs).map((w) => w.text).join(" ")
+        : deliveredText(gen.text, playedMs, gen.audioMs);
       this.mark("interrupted", { playedMs, byProvider });
       // `interrupted` closes the generation: nothing with its id is emitted afterwards
       // (docs/08 §6.5); the store closes the utterance and the speech from it.
-      this.emitFor(gen, "interrupted", { generation_id: gen.id, played_ms: playedMs, delivered_text: delivered, delivered_basis: "estimated" });
+      this.emitFor(gen, "interrupted", { generation_id: gen.id, played_ms: playedMs, delivered_text: delivered, delivered_basis: timed ? "word_timestamps" : "estimated" });
       const turn = this.turnOf(gen);
       if (turn?.latency && wasSpeaking) {
         turn.latency.t_playback_stop = this.now();
@@ -1030,6 +1111,10 @@ export abstract class RealtimeEngineBase implements VoiceEngine {
     clearTimeout(this.expectTimer);
     this.closeTransport();
     this.dropMic();
+    for (const off of this.releaseSynth) off();
+    this.releaseSynth = [];
+    void this.synth?.disconnect();
+    this.synth = null;
     if (this.releasePlayer) {
       // Only the owner may silence the shared player.
       this.player?.flush();

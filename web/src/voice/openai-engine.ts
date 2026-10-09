@@ -49,6 +49,11 @@ export class OpenAIRealtimeEngine extends RealtimeEngineBase {
   /** Session-clock time of the first audio sample sent on this connection. */
   private audioEpoch: number | null = null;
 
+  /** With the cloned voice the backend issues a text-only session (docs/08 §15). */
+  protected get supportsClonedVoice(): boolean {
+    return true;
+  }
+
   protected get transportReady(): boolean {
     return this.ready && this.ws?.readyState === WebSocket.OPEN;
   }
@@ -238,6 +243,9 @@ export class OpenAIRealtimeEngine extends RealtimeEngineBase {
         break;
       case "response.output_text.delta":
         this.agentTranscript(responseId, str(msg.delta), { final: false, append: true });
+        break;
+      case "response.output_text.done":
+        if (str(msg.text)) this.agentTranscript(responseId, str(msg.text), { final: true });
         break;
       case "response.function_call_arguments.done": {
         const state = this.responses.get(responseId);

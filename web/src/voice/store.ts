@@ -122,6 +122,10 @@ export interface ConsoleState {
   /** Voices the backend offers (`GET /health` → `voice_modes`, docs/08 §3). */
   voiceModes: VoiceMode[];
   speakingKind: SpeechKind | null;
+  /** Tool catalogue announced by `GET /health` (docs/08 §3). */
+  toolCatalog: { name: string; description: string }[];
+  /** Model ids announced by the backend, per engine. */
+  engineModels: Partial<Record<string, string>>;
 }
 
 export type Slice = "status" | "transcript" | "tools" | "affect" | "style" | "latency" | "notices" | "meta" | "reset";
@@ -158,6 +162,8 @@ function initialState(): ConsoleState {
     voiceMode: "engine",
     voiceModes: ["engine"],
     speakingKind: null,
+    toolCatalog: [],
+    engineModels: {},
   };
 }
 
@@ -398,7 +404,7 @@ export function dispatch(ev: AnyEngineEvent): void {
 // ── Mutations that do not come from the engine ───────────────────────────────
 
 export function beginSession(conversation_id: string, engine: EngineId, model: string, simulated: boolean): void {
-  const keep = { voiceAnalysis: state.voiceAnalysis, voiceMode: state.voiceMode, voiceModes: state.voiceModes };
+  const keep = { voiceAnalysis: state.voiceAnalysis, voiceMode: state.voiceMode, voiceModes: state.voiceModes, toolCatalog: state.toolCatalog, engineModels: state.engineModels };
   seenEvents.clear();
   state = { ...initialState(), ...keep, running: true, conversation_id, engine, model, simulated };
   notify("reset");
@@ -421,7 +427,7 @@ export function endSession(): void {
 
 export function reset(): void {
   // Engine and voice choices are settings, not conversation state.
-  const keep = { engine: state.engine, model: state.model, simulated: state.simulated, voiceMode: state.voiceMode, voiceModes: state.voiceModes };
+  const keep = { engine: state.engine, model: state.model, simulated: state.simulated, voiceMode: state.voiceMode, voiceModes: state.voiceModes, toolCatalog: state.toolCatalog, engineModels: state.engineModels };
   state = { ...initialState(), ...keep };
   notify("reset");
 }
@@ -441,6 +447,14 @@ export function setStatus(status: EngineStatus): void {
 export function setVoiceAnalysis(on: boolean): void {
   state.voiceAnalysis = on;
   notify("meta", "affect");
+}
+
+export function setHealth(tools: ConsoleState["toolCatalog"], models: ConsoleState["engineModels"]): void {
+  state.toolCatalog = tools;
+  state.engineModels = models;
+  const m = models[state.engine];
+  if (m && state.model !== m && !state.simulated) state.model = m;
+  notify("meta", "tools");
 }
 
 export function setVoiceMode(mode: VoiceMode): void {

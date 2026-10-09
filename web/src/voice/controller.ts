@@ -7,7 +7,7 @@
  * analyst calls, style decisions and the user controls.
  */
 import { analyze, DIRECTIVES, inferStyle } from "./analyst";
-import { fetchBrief, fetchVoiceModes, runTool, verifyAnswer, type ToolContext } from "./api";
+import { fetchBrief, fetchHealth, runTool, verifyAnswer, type ToolContext } from "./api";
 import { getMicTap } from "./audio/mic-tap";
 import { createEngine, engineInfo, engineLabel, otherEngine } from "./engine-factory";
 import type { EngineDeps } from "./fake-engine";
@@ -459,8 +459,15 @@ export function sendText(text: string): void {
     void start({ question: clean });
     return;
   }
-  if (!engine) return; // an engine switch is in flight
   preferDirectIfAsked(clean); // before sending, so it already shapes this answer
+  const status = store.getState().status;
+  if (!engine || status === "connecting" || status === "renewing") {
+    // Still connecting (or switching): keep it, show it, and send it as soon as the engine can take it.
+    pendingQuestion = clean;
+    pendingEcho = { id: crypto.randomUUID(), text: clean, shown: false };
+    showEcho();
+    return;
+  }
   engine.sendText(clean);
 }
 
@@ -574,8 +581,14 @@ export async function requery(toolCallId: string): Promise<void> {
   store.setRequery(toolCallId, { pending: false, matches, ms: env.trace.ms, at: Date.now() });
 }
 
-// Ask the backend which voices it offers, so the UI only shows what exists (docs/08 §3).
-void fetchVoiceModes().then((modes) => store.setVoiceModes(modes));
+// Ask the backend which voices it offers, so the UI only shows what exists (docs/08 §3),
+// and start with its default voice (`default_voice_mode`) unless a session already runs.
+void fetchHealth().then((h) => {
+  store.setVoiceModes(h.modes);
+  store.setHealth(h.tools, h.models);
+  const s = store.getState();
+  if (!s.running && h.defaultMode === "cloned" && h.clonedEngines.includes(s.engine)) store.setVoiceMode("cloned");
+});
 
 // Initial engine metadata, so the HUD is truthful before the first session.
 {
