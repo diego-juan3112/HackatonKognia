@@ -1,0 +1,290 @@
+{
+  "checked_at_utc": "2026-10-09T14:17:10.295351+00:00",
+  "sdk": "sodapy 2.2.0",
+  "dataset": "s2ru-bqt6",
+  "credentials_used": false,
+  "metadata": {
+    "id": "s2ru-bqt6",
+    "name": "Relación de IPS públicas y privadas según el nivel de atención y capacidad instalada",
+    "rowsUpdatedAt": 1669070228,
+    "publicationDate": 1618250028
+  },
+  "fields": [
+    {
+      "fieldName": "departamento",
+      "name": "Departamento",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "municipio",
+      "name": "Municipio",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "c_digo_prestador",
+      "name": "Código prestador",
+      "dataTypeName": "number"
+    },
+    {
+      "fieldName": "nombre_prestador",
+      "name": "Nombre prestador",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "nit_ips",
+      "name": "nit IPS ",
+      "dataTypeName": "number"
+    },
+    {
+      "fieldName": "num_digito_verificion",
+      "name": "num digito_verificion",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "naturaleza",
+      "name": "naturaleza",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "num_nivel_atencion",
+      "name": "num nivel atencion",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "c_digo_sede",
+      "name": "Código sede",
+      "dataTypeName": "number"
+    },
+    {
+      "fieldName": "n_mero_sede",
+      "name": "Número sede",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "nom_sede_ips",
+      "name": "nom sede IPS",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "gerente",
+      "name": "Gerente",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "direcci_n",
+      "name": "Dirección",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "email",
+      "name": "Email",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "tel_fono",
+      "name": "Teléfono",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "nom_grupo_capacidad",
+      "name": "nom grupo capacidad ",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "nom_descripcion_capacidad",
+      "name": "nom descripcion capacidad ",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "num_cantidad_capacidad_instalada",
+      "name": "num cantidad capacidad instalada",
+      "dataTypeName": "number"
+    },
+    {
+      "fieldName": "fecha_corte",
+      "name": "Fecha Corte",
+      "dataTypeName": "text"
+    },
+    {
+      "fieldName": "fuente",
+      "name": "Fuente",
+      "dataTypeName": "text"
+    }
+  ],
+  "queries": {
+    "counts": {
+      "parameters": {
+        "select": "count(*) as rows,count(distinct c_digo_prestador) as providers,count(distinct c_digo_sede) as site_codes"
+      },
+      "elapsed_ms": 323,
+      "result": [
+        {
+          "rows": "41427",
+          "providers": "9320",
+          "site_codes": "10921"
+        }
+      ]
+    },
+    "cutoffs": {
+      "parameters": {
+        "select": "fecha_corte,count(*) as rows",
+        "group": "fecha_corte"
+      },
+      "elapsed_ms": 313,
+      "result": [
+        {
+          "fecha_corte": "Fecha corte REPS: Nov  5 2022  1:37PM",
+          "rows": "41427"
+        }
+      ]
+    },
+    "nature": {
+      "parameters": {
+        "select": "naturaleza,count(*) as rows",
+        "group": "naturaleza"
+      },
+      "elapsed_ms": 212,
+      "result": [
+        {
+          "naturaleza": "Privada",
+          "rows": "25067"
+        },
+        {
+          "naturaleza": "Pública",
+          "rows": "16174"
+        },
+        {
+          "naturaleza": "Mixta",
+          "rows": "186"
+        }
+      ]
+    },
+    "site_sample": {
+      "parameters": {
+        "select": ":id,c_digo_prestador,c_digo_sede,n_mero_sede,nombre_prestador,municipio,nom_grupo_capacidad,nom_descripcion_capacidad,num_cantidad_capacidad_instalada",
+        "where": "c_digo_prestador='564204576'",
+        "limit": 6,
+        "order": ":id"
+      },
+      "elapsed_ms": 199,
+      "result": [
+        {
+          ":id": "row-3cey~icwc~fmdh",
+          "c_digo_prestador": "564204576",
+          "c_digo_sede": "564204576",
+          "n_mero_sede": "01",
+          "nombre_prestador": "ESE HOSPITAL SAN JOSE",
+          "municipio": "SALGAR",
+          "nom_grupo_capacidad": "AMBULANCIAS",
+          "nom_descripcion_capacidad": "Básica",
+          "num_cantidad_capacidad_instalada": "1"
+        },
+        {
+          ":id": "row-9i6m-9u7p-6g6r",
+          "c_digo_prestador": "564204576",
+          "c_digo_sede": "564204576",
+          "n_mero_sede": "01",
+          "nombre_prestador": "ESE HOSPITAL SAN JOSE",
+          "municipio": "SALGAR",
+          "nom_grupo_capacidad": "AMBULANCIAS",
+          "nom_descripcion_capacidad": "Básica",
+          "num_cantidad_capacidad_instalada": "1"
+        },
+        {
+          ":id": "row-ejwr~nhh4~pwz6",
+          "c_digo_prestador": "564204576",
+          "c_digo_sede": "564204576",
+          "n_mero_sede": "01",
+          "nombre_prestador": "ESE HOSPITAL SAN JOSE",
+          "municipio": "SALGAR",
+          "nom_grupo_capacidad": "AMBULANCIAS",
+          "nom_descripcion_capacidad": "Básica",
+          "num_cantidad_capacidad_instalada": "1"
+        },
+        {
+          ":id": "row-zzz4~b8kf~csmb",
+          "c_digo_prestador": "564204576",
+          "c_digo_sede": "564204576",
+          "n_mero_sede": "01",
+          "nombre_prestador": "ESE HOSPITAL SAN JOSE",
+          "municipio": "SALGAR",
+          "nom_grupo_capacidad": "CAMAS",
+          "nom_descripcion_capacidad": "Pediátrica",
+          "num_cantidad_capacidad_instalada": "2"
+        },
+        {
+          ":id": "row-hh27-prfm-g78r",
+          "c_digo_prestador": "564204576",
+          "c_digo_sede": "564204576",
+          "n_mero_sede": "01",
+          "nombre_prestador": "ESE HOSPITAL SAN JOSE",
+          "municipio": "SALGAR",
+          "nom_grupo_capacidad": "CAMAS",
+          "nom_descripcion_capacidad": "Adultos",
+          "num_cantidad_capacidad_instalada": "3"
+        },
+        {
+          ":id": "row-ra9g~y5ia-4f4i",
+          "c_digo_prestador": "564204576",
+          "c_digo_sede": "564204576",
+          "n_mero_sede": "01",
+          "nombre_prestador": "ESE HOSPITAL SAN JOSE",
+          "municipio": "SALGAR",
+          "nom_grupo_capacidad": "CAMAS",
+          "nom_descripcion_capacidad": "TPR",
+          "num_cantidad_capacidad_instalada": "2"
+        }
+      ]
+    },
+    "page_1": {
+      "parameters": {
+        "select": ":id,departamento,municipio,nombre_prestador",
+        "limit": 2,
+        "offset": 0,
+        "order": ":id"
+      },
+      "elapsed_ms": 184,
+      "result": [
+        {
+          ":id": "row-penb-2sww.fyr5",
+          "departamento": "Amazonas",
+          "municipio": "EL ENCANTO",
+          "nombre_prestador": "E.S.E. HOSPITAL SAN RAFAEL DE LETICIA"
+        },
+        {
+          ":id": "row-8y67_qqic_m8yv",
+          "departamento": "Amazonas",
+          "municipio": "EL ENCANTO",
+          "nombre_prestador": "E.S.E. HOSPITAL SAN RAFAEL DE LETICIA"
+        }
+      ]
+    },
+    "page_2": {
+      "parameters": {
+        "select": ":id,departamento,municipio,nombre_prestador",
+        "limit": 2,
+        "offset": 2,
+        "order": ":id"
+      },
+      "elapsed_ms": 195,
+      "result": [
+        {
+          ":id": "row-96ti~y89c.xdhb",
+          "departamento": "Amazonas",
+          "municipio": "EL ENCANTO",
+          "nombre_prestador": "E.S.E. HOSPITAL SAN RAFAEL DE LETICIA"
+        },
+        {
+          ":id": "row-dkhs.9nrz.taja",
+          "departamento": "Amazonas",
+          "municipio": "EL ENCANTO",
+          "nombre_prestador": "E.S.E. HOSPITAL SAN RAFAEL DE LETICIA"
+        }
+      ]
+    }
+  },
+  "soda3_without_token": {
+    "http_status": 200,
+    "body_excerpt": "[\n{\"count\":\"41427\"}\n]\n"
+  }
+}
