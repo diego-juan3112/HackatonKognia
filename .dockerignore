@@ -1,0 +1,24 @@
+# Contexto minimo del contenedor de Reto 01 (docs/11 §5).
+# Secretos: se pasan en tiempo de ejecucion (--env-file o variables del host), R-05.
+.env
+.env.*
+!.env.example
+
+.git/
+.venv*/
+venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.vercel/
+
+tests/
+docs/
+web/
+migrations/
+infra/
+scripts/
+spikes/
+.claude/
