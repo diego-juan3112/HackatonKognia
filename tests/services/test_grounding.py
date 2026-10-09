@@ -95,6 +95,16 @@ def test_verifier_flags_invented_figures():
     assert "15.000" in bad["correction"] and "Corrígete" in bad["correction"] and ok["correction"] is None
 
 
+def test_contact_digits_read_from_the_source_are_not_flagged():
+    """Live bug 2026-10-09: a phone and an address read correctly were flagged as invented."""
+    data = {"site": {"contact": {"address": "CALLE 2 SUR 46-116 CS 1322", "phone": "2669633-3104474985"}},
+            "capacities": [{"group": "CONSULTORIOS", "quantity": 1}]}
+    said = "Dirección CALLE 2 SUR 46-116 CS 1322, teléfono 2669633-3104474985; 1 consultorio."
+    r = verify(said, [data])
+    assert r["grounded"] and r["correction"] is None
+    assert verify("Tiene 4.500 camas y teléfono 2669633.", [data])["unsupported"] == [4500]
+
+
 def test_number_parsing_handles_colombian_formats_and_ignores_small_numbers():
     assert numbers_in_text("97.036 camas, 10 921 sedes, 3 resultados, 5 de noviembre de 2022") == [97036, 10921]
     assert numbers_in_text("1.234,5 metros") == [1234.5]
