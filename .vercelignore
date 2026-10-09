@@ -1,0 +1,28 @@
+# Proyecto "api" de Vercel (docs/11 §3). Lo que no se sube con `vercel deploy`.
+# web/ NO se lista aqui: el proyecto "web" tiene su propia raiz (web/) y se
+# excluye del bundle de la API con "excludeFiles" en vercel.json.
+
+# Secretos: nunca salen del equipo (R-05). Las claves viven en las variables de Vercel.
+.env
+.env.*
+!.env.example
+
+# Entornos y caches locales
+.venv*/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Fuera del runtime de Reto 01
+tests/
+docs/
+migrations/
+infra/
+scripts/
+spikes/
+.claude/
+Dockerfile
+docker-compose.yml

@@ -390,6 +390,13 @@ recorrido HTTP con modelos reales.
 ## 9. Comandos
 
 ```bash
+# Dependencias
+pip install -r requirements-base.txt   # desarrollo: base genérica + pruebas (incluye requirements.txt)
+pip install -r requirements.txt        # solo el runtime de Reto 01 (lo que va a Vercel / contenedor)
+
+# App de voz de Reto 01 (sin base de datos; docs/11)
+python -m uvicorn api.app_voice:app --app-dir src --port 8000
+
 # Base de datos
 docker compose up -d
 python -m scripts.migrate            # base de desarrollo

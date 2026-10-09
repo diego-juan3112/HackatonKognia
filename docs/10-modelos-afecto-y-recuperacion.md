@@ -17,7 +17,7 @@ independientes de los proveedores: cambiar quién juega un rol es **configuraci�
 | **Analista de afecto** | Estima sentimiento y emoción por texto y por voz | `fast` = Gemini multimodal | No (≤ 3 s tras el enunciado) |
 | Política de estilo | Decide `directo`/`cálido`/`didáctico`/`neutro` | Determinista (YAML + suavizado) | No |
 | Redactor del brief | Plantilla con cifras en vivo ([09](09-datos-en-vivo-datos-gov-co.md) §8) | Sin LLM | No |
-| Verificador de cifras | Compara las cifras dichas con los resultados de herramientas | Backlog | No |
+| Verificador de cifras | Compara las cifras dichas con los resultados de herramientas (`POST /verify/answer`, `services/ips/verify.py`) | Determinista, sin LLM | No (después de hablar) |
 
 ```yaml
 # config/models.yaml  (planeado; los IDs se rellenan tras la prueba autenticada)
@@ -45,10 +45,12 @@ config más reglas: nunca lo decide un LLM.
 
 | Candidato | ID verificado | Esquema válido | Filtros correctos | Anclado | Primer audio útil p50/p95 | Timeouts | Costo | Veredicto |
 |---|---|---|---|---|---|---|---|---|
-| Gemini Live | | | | | | | | |
-| OpenAI Realtime | | | | | | | | |
-| Gemini (analista, texto y voz) | | | | | | | | |
-| OpenAI (analista alterno) | | | | | | | | |
+| Gemini Live | `gemini-3.8-live` (G2) | | | | 1,7–2,2 s (G2, 2 muestras) | | | Motor 2 |
+| OpenAI Realtime | `gpt-realtime-2.1` (G2) | | | | 3,4 s; reconocimiento previo 1,3 s (G2, 1 muestra) | | | Motor 1 |
+| Gemini (analista, texto y voz) | `gemini-3.5-flash-lite` (G3) | 3/3 texto · 6/6 audio | — | — | texto p50 1,1 s · audio p50 1,4–2,2 s (un atípico de 17,7 s) | 0 (sin plazo); con plazo de 3 s → `uncertain` | — | `fast` (D-10) |
+| OpenAI (analista alterno) | `gpt-5.4-mini` (G3) | 3/3 texto · **audio no**: `gpt-audio-*` rechaza `json_schema` (400) | — | — | texto p50 1,3 s | 0 | — | `deep`, solo texto |
+
+*Celdas de motores en blanco: las mide el benchmark del carril A. Datos de G3 en [00](00-contexto-y-decisiones.md) §6.*
 
 Un casillero vacío **no** se marca como verificado. `gemini-3.5-flash-lite` es un candidato histórico del proyecto, no una disponibilidad confirmada hoy.
 
@@ -148,7 +150,8 @@ prepare ─► ┬ text_affect ──┬─► fuse ─► style_policy ─► E
 ```
 
 - **Entradas por intervención del usuario:** texto; recorte de audio WAV (≤ 30 s) **solo si hay consentimiento**; señales de interacción (duración, palabras por segundo, pausa previa, si interrumpió al agente, pregunta repetida); historial de afecto de los últimos 3 turnos (lo envía el cliente: el servidor no guarda nada).
-- `text_affect` y `acoustic_affect` son llamadas del perfil `fast` con **esquema de salida** (la segunda, multimodal: audio + transcripción). Plazo de 3 s; si fallan, el resultado es `uncertain`, **nunca** una etiqueta vieja con confianza.
+- `text_affect` y `acoustic_affect` son llamadas del perfil `fast` con **esquema de salida** (la primera con respaldo `deep`). Plazo de 3 s; si fallan, el resultado es `uncertain`, **nunca** una etiqueta vieja con confianza.
+- **`acoustic_affect` recibe solo el audio** (sin transcripción) más medidas de prosodia calculadas en el servidor (duración, volumen dBFS, variación, palabras por segundo; `services/analyst/prosody.py`). *Hallazgo de G3:* con transcripción, el modelo etiquetaba por las palabras; aun sin ella, con voz **sintética** (TTS «tenso» y «calmado» de la misma frase) devolvió las mismas etiquetas. **A-21 no está verificado**: hay que probarlo con una grabación humana real; mientras tanto la interfaz rotula la estimación por voz como tal y la fusión marca la discrepancia cuando la hay.
 - Corre **en paralelo a la respuesta** y no la retrasa (R-24): si llega después de empezar el turno siguiente, aplica desde el que sigue.
 
 ### `AffectEstimate`
@@ -209,12 +212,19 @@ desde el turno siguiente. La interfaz muestra el estilo vigente con su motivo y 
 
 - Son **observaciones inciertas**; la preferencia explícita y el éxito de la tarea mandan.
 - Sin diagnóstico, sin rasgos estables, sin afirmaciones clínicas.
-- **Consentimiento** visible para el análisis de voz; sin él, solo texto. El audio **no se guarda**: el recorte vive en memoria durante la petición y se descarta.
+- **Validación explícita de la voz** (decisión del equipo, 2026-10-09, tarde; reemplaza el «activo por defecto» de la mañana): un **botón** («Usar mi voz») con el que la persona autoriza el micrófono y el análisis de su voz; hasta pulsarlo, `voice_consent = false` (texto y análisis solo de texto). Tras validarla: indicador visible («análisis de voz activo») e interruptor para retirarla. El audio **no se guarda**: el recorte vive en memoria durante la petición y se descarta. *Riesgo registrado:* la voz analizada puede considerarse dato biométrico (Ley 1581, datos sensibles) y el recorte se envía a Google; el indicador visible es la mitigación mínima.
+- **Aviso de IA mínimo** (se mantiene, sin diálogo): el agente dice que es una IA al empezar (prompt) y hay un distintivo visible de una línea; con la voz clonada, «voz sintética» (D-20). Lo exigen RETO-P1/P3 (F-01) y A-25.
 - **UE:** el AI Act exige avisar que se interactúa con una IA (art. 50) y la inferencia de emociones a partir de datos biométricos está **prohibida en entornos laborales y educativos** (art. 5.1.f) y exige transparencia en otros (fuentes secundarias; no es asesoría legal). Antes de cualquier uso comercial en la UE hay que evaluarlo con asesoría jurídica.
 
-## 7. Instrucciones del agente (prompt `reto01-ips-v1`)
+## 7. Instrucciones del agente (prompt `reto01-ips-v2` vigente)
 
-Se versionan y se evalúan; viven en `config/domains/reto01_ips.yaml` (planeado). Los motores las reciben al crear la sesión.
+Se versionan y se evalúan; viven en `config/domains/reto01_ips.yaml`, que **manda** sobre el texto de
+abajo. Los motores las reciben al crear la sesión. **v2 (2026-10-09), contra la alucinación:** mundo
+cerrado (solo vale lo que devuelve una herramienta en esta conversación; nada de conocimiento general
+sobre hospitales o ciudades), lista explícita de lo que la fuente **no** contiene (disponibilidad,
+cercanía, horarios, médicos o personal, servicios, calidad, precios, EPS, datos posteriores a 2022),
+`unavailable` y `ambiguous` nunca se contestan de memoria, y las cifras se repiten tal como vienen en
+`for_model`. Se mide con `scripts/eval_grounding.py` contra el motor real. Texto de la v1, como referencia:
 
 ```
 Eres un asistente de inteligencia artificial que conversa por voz, en español colombiano, sobre el conjunto

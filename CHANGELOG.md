@@ -5,6 +5,74 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added — Reto 01, herramientas de agente (2026-10-09, rama `feat/reto-01-api-tools`, contrato datos `2026-10-09.3`)
+- `verify_registration`, `area_profile`, `compare_areas` y `dataset_info` en `POST /tools/{nombre}` y en las
+  declaraciones de herramientas ([09](docs/09-datos-en-vivo-datos-gov-co.md) §4). Porcentajes, diferencias y
+  razones se calculan en Python a partir de la fuente (R-22); `dataset_info` no consulta la fuente.
+- `search_ips` acepta `capacity_group`/`capacity_type` (sedes con esa capacidad instalada registrada, con
+  `NOT_AVAILABILITY`). Advertencias nuevas: `DERIVED_FROM_SOURCE`, `NOT_PER_CAPITA`.
+
+### Fixed
+- Idempotencia de `IpsToolService.run`: la clave incluye herramienta y huella de argumentos (H1).
+
+### Added — Reto 01, carril B (2026-10-09, rama `feat/reto-01-api`)
+- **Backend de voz implementado** (`src/api/app_voice.py`, contrato `2026-10-09.2`): `GET /health`
+  (con `voice_modes`), `POST /sessions` (token HMAC anónimo, R-28), `POST /realtime/session`
+  (OpenAI `gpt-realtime-2.1` y Gemini `gemini-3.8-live`, `voice_mode` efectivo), `POST /speech/session`
+  (token de Cartesia de 600 s, D-20), `GET /dataset/brief`, `POST /tools/{nombre}` (las 5 herramientas),
+  `POST /analysis/utterance` (JSON con WAV en base64, no multipart) y `POST /feedback`.
+- **Datos en vivo** (D-12, D-13): cliente SODA3 con plazo común, un reintento, token descartado
+  ante 403 y caché fresca/`stale`; SoQL con lista cerrada; léxico `data/lexicon.json` con
+  homónimos y distritos (`scripts/build_lexicon.py`); sobre de evidencia siempre presente.
+- **Analista** (D-16): grafo LangGraph `prepare → text ∥ acoustic → fuse → style_policy`, perfiles
+  `fast` → `deep` (D-10), prosodia local y política de estilo determinista con suavizado
+  (`config/style_policy.yaml`); prompt versionado `reto01-ips-v1` (`config/domains/reto01_ips.yaml`).
+- D-20 en `docs/00`; IDs de D-10 y D-11 cerrados; mediciones de G3 y del token de Cartesia.
+
+### Verificado
+- 121 pruebas offline en verde (`pytest`, sin red ni claves).
+- En vivo (G3, 2026-10-09): números dorados de `docs/09` §9 exactos; analista por texto 3/3 en
+  esquema; token de Cartesia 200 en ≈ 1 s.
+
+### Added — contra alucinaciones y latencia (2026-10-09, tarde)
+- **Mundo cerrado (R-22):** prompt `reto01-ips-v5` (solo vale lo que devuelve una herramienta; lista
+  de lo que la fuente no contiene), `for_model` determinista y compacto en cada sobre (cifra, unidad,
+  corte, ≤ 3 filas) y verificador de cifras `POST /verify/answer` (sin LLM).
+- **Evaluación de grounding** (`scripts/eval_grounding.py`, `docs/anexos/eval-grounding-2026-10-09.md`):
+  `gpt-realtime-2.1` en vivo, **0 alucinaciones en 20 casos**, 5/5 cifras doradas, 10/10 rechazos
+  fuera de alcance. La corrección «no, dije Melgar» fallaba: `correct_context` pasa a `field` + `value`.
+- **Latencia:** muletilla «Un momento.», herramienta antes del aviso de IA, respuesta en una frase;
+  `VOICE_OPENAI_MODEL` y VAD configurables; conexión caliente y precarga de los agregados probables;
+  dos intentos de 3,5 s + 2 s; 4xx intermitente reintentable. Banco `scripts/bench_models.py`.
+- G1: `requirements.txt` mínimo (63 MB), `vercel.json` (`iad1`), Dockerfile de respaldo; smoke
+  `scripts/smoke_public.py` y sondas `tests/live/`.
+- D-21 (avatar 3D VRM en el MVP) y dependencias del frontend registradas (R-10).
+
+### Changed
+- **R-26:** análisis de voz activo por defecto, con indicador visible e interruptor; se mantiene el
+  aviso de IA mínimo (RETO-P1/P3, A-25). Riesgo de Ley 1581 registrado en `docs/10` §6.
+- `docs/09` §6: la primera consulta de la sesión puede salir de la precarga `fresh`; solo
+  «Reconsultar» fuerza en vivo.
+
+### Verificado
+- Smoke local 20/20 P0; 136 pruebas offline; 8 sondas en vivo; escaneo de secretos del historial
+  (56 commits, todas las ramas): sin coincidencias.
+- Banco de latencia (`scripts/bench_models.py`, n = 10): primer audio útil con consulta p50 **9,0 → 3,9 s**
+  (OpenAI) y **13,4 → 4,2 s** (Gemini); p95 4,7 s y 6,9 s: **la meta de 4,0 s aún no se cumple**. Se
+  mantienen `gpt-realtime-2.1`, `server_vad` y 500 ms (`docs/00` §6). Precarga ampliada a 10 agregados;
+  `for_model` aclara que ante `invalid` la fuente sí respondió.
+- Prueba en caliente: front de `main` (006d6c1) + este backend + `gpt-realtime-2.1` en Edge con
+  micrófono simulado: brief en vivo, «Un momento.», `aggregate_ips` en vivo y «9.320»; 0 errores.
+
+### Pendiente
+- **A-21 sin verificar:** con voz sintética el modelo no distinguió tono tenso de calmado; falta
+  una grabación humana real. Feedback a LangSmith (hoy: registro estructurado). Despliegue en
+  Vercel (G1, D-15 abierta).
+
+### Changed
+- `docs/09` §2: plazo de conexión de 2 s → 4 s (la primera conexión midió 0,8–2,7 s).
+- `docs/03`: `/analysis/utterance` pasa de multipart a JSON para no sumar `python-multipart` (R-10).
+
 ### Added
 - **Contratos de Reto 01 (2026-10-09), solo documentación: sin código ni despliegue.**
   Especificación (`docs/07`), contrato de voz en vivo (`08`), datos en vivo de
