@@ -30,7 +30,7 @@ Fuentes: las cinco capturas del reto, las tres transcripciones del arranque, el 
 | 2 | El contexto del agente es **solo la API** de datos.gov.co. No hay documento sorpresa ni subida de archivos. **Riesgo aceptado (RETO-M05):** si el jurado entregara un archivo, el MVP no lo carga (issue B-11). |
 | 3 | «Acciones» = consultar IPS y corregir la conversación. Sin agendar citas ni crear solicitudes. |
 | 4 | Equipo de dos personas; plazo 16:00; se congela a las 14:30. |
-| 5 | Voz con las APIs pagas de OpenAI y Gemini (prioridad); Cartesia solo como plan B si hiciera falta. |
+| 5 | Voz con las APIs pagas de OpenAI y Gemini (prioridad); Cartesia, contratada el 2026-10-09, aporta una **voz clonada opcional** sobre el mismo motor ([08](08-contrato-voz-en-vivo.md) §15; D-20 propuesta); la voz del motor sigue siendo la base y el respaldo. |
 | 6 | Psicología adaptativa y emoción acústica son **Must**. |
 | 7 | Sin base de datos, sin RAG, sin embeddings, sin cédula. |
 | 8 | Vercel con Dockerfile de respaldo; `main` es la rama de integración y de producción. |
@@ -61,8 +61,8 @@ no chocar con las reglas `R-xx` del repo. Esta spec usa `F-xx` (funcional), `NF-
 | | Contenido |
 |---|---|
 | **Must** | **Voz (20%):** motor en tiempo real es-CO con OpenAI y Gemini + selector, interrupciones, reconocimiento previo a consultas, HUD de latencia, modo texto · **Datos en vivo:** brief + 5 herramientas, sobre de evidencia, normalización de entidades, panel «API en vivo» (SoQL, ms, filas, fuente y corte, «Reconsultar») · **Recuperación:** ambigüedad, correcciones («Corregir lo que dije»), reintentos acotados, **conmutación de motor**, «Repetir» · **Transcripción (15%):** roles + marcas de tiempo + texto realmente escuchado · **Afecto/psicología:** analista texto ∥ voz, panel de emociones, estilo adaptativo visible, «Más directo» · **UX/demo (25%):** consola Astro cuidada, aviso de IA y consentimiento · **Entrega (10%):** URL estable, repo accesible, README de 1 página |
-| **Should** (si falta tiempo cae primero lo último) | Descargar transcripción · entidades visibles en la transcripción («original → corregido») · caché de respaldo del brief · `compare_ips` · paridad total del segundo motor · refinamiento multi-hablante con Gemini |
-| **Won't (hoy)** | Subir documentos · BD, RAG, embeddings · cédula · avatar 3D · Twilio · Azure Container Apps · motor en cascada · *hedged requests* · turno semántico propio · voz clonada · text-to-SQL libre · agendar citas |
+| **Should** (si falta tiempo cae primero lo último) | **Voz clonada con Cartesia** (seleccionable; degrada a la voz del motor) · descargar transcripción · entidades visibles en la transcripción («original → corregido») · caché de respaldo del brief · `compare_ips` · paridad total del segundo motor · refinamiento multi-hablante con Gemini |
+| **Won't (hoy)** | Subir documentos · BD, RAG, embeddings · cédula · avatar 3D · Twilio · Azure Container Apps · motor en cascada · *hedged requests* · turno semántico propio · text-to-SQL libre · agendar citas |
 
 ## 5. Requisitos funcionales
 

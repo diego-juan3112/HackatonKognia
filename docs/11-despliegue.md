@@ -10,7 +10,8 @@ Requisitos del reto: RETO-R08, E01–E03, M06, M07 ([07](07-reto-01-especificaci
 Navegador ──HTTPS──► Vercel · proyecto web  (Astro estático)            https://<dominio>/
 Navegador ──HTTPS──► Vercel · proyecto api  (FastAPI, solo HTTP)         https://<api>/   (CORS: solo el origen del web)
 Navegador ──WSS───► OpenAI Realtime / Gemini Live                        (credencial efímera emitida por la api)
-api ──HTTPS──► datos.gov.co (SODA3)   ·   api ──HTTPS──► Gemini / OpenAI (analista, credenciales)
+Navegador ──WSS───► Cartesia (solo con la voz clonada, opcional)         (token de acceso emitido por la api)
+api ──HTTPS──► datos.gov.co (SODA3)   ·   api ──HTTPS──► Gemini / OpenAI / Cartesia (analista, credenciales)
 ```
 
 Dos proyectos de Vercel (carril A despliega `web`, carril B despliega `api`). Alternativa si
@@ -27,6 +28,8 @@ sin CORS). **No hay WebSocket propio, base de datos ni E5**: el audio va navegad
 | Variable | Proyecto | Para qué |
 |---|---|---|
 | `GEMINI_API_KEY`, `OPENAI_API_KEY` | api | Credenciales efímeras de los motores y analista |
+| `CARTESIA_API_KEY` | api | Emite el token de acceso de la voz clonada (`POST /speech/session`, [08](08-contrato-voz-en-vivo.md) §15.3). **Opcional:** sin ella, `GET /health` no anuncia `cloned` y solo se ofrece la voz del motor. Nunca llega al navegador (R-28) |
+| `CARTESIA_VOICE_ID` | api | Identificador de la voz clonada del equipo; el backend lo entrega al navegador junto al token. No es un secreto, pero se configura aquí para no fijarlo en el código. Requerida si hay `CARTESIA_API_KEY` |
 | `DATOS_GOV_APP_TOKEN` | api | Token SODA3 (opcional; si es inválido se descarta, [09](09-datos-en-vivo-datos-gov-co.md) §2) |
 | `SESSION_SIGNING_KEY` | api | Firma de la sesión anónima (32 bytes aleatorios) |
 | `ALLOWED_ORIGINS` | api | Origen(es) del web para CORS |
@@ -99,12 +102,12 @@ Contra la URL pública, sale con error si algo falla y imprime latencias:
 | 15:00 | Candidato elegido; `smoke_public.py` en verde; escaneo de secretos |
 | 15:25 | Calentar: abrir la URL, pedir el brief, probar ambos motores; `GET /health` |
 | 15:30 | URL de producción y repo registrados en el formulario |
-| Durante el jurado | Pestaña de respaldo abierta; si algo falla: `GET /health`, cambiar de motor, *Instant Rollback* |
+| Durante el jurado | Pestaña de respaldo abierta; si algo falla: `GET /health`, cambiar de motor (o de voz, a la del motor), *Instant Rollback* |
 
 ## 9. Secretos antes de abrir el repo (RETO-E02)
 
 El repo debe ser público o con acceso a los jueces. Antes: revisar el **historial** (no solo el
-árbol) con `git log -p` y búsquedas de patrones (`AIza`, `sk-`, `xai-`, `DATOS_GOV`, `.env`);
+árbol) con `git log -p` y búsquedas de patrones (`AIza`, `sk-`, `sk_car_`, `xai-`, `DATOS_GOV`, `.env`);
 la extensión `security-guidance` ya corre en segundo plano. Si algo apareció, **revocar y rotar**
 la clave (no basta con borrarla del último commit). Rotar las claves de la demo al terminar.
 
@@ -113,6 +116,13 @@ la clave (no basta con borrarla del último commit). Rotar las claves de la demo
 Los costos de API son del equipo. Configurar **topes de gasto y alertas** en las consolas de OpenAI
 y Google; una demo de 10 minutos cuesta centavos, los ensayos también. La sesión anónima firmada
 y los límites de tasa por token e IP evitan que un tercero use las claves (R-28).
+
+**Cartesia (voz clonada, [08](08-contrato-voz-en-vivo.md) §15):** cobra 1 crédito por carácter sintetizado
+(≈ 750–800 créditos por minuto de audio) y el plan Pro trae 100.000 créditos al mes y **3 síntesis
+concurrentes** (precios publicados, leídos el 2026-10-09). Al agotarse los créditos o superar la
+concurrencia, la interfaz degrada sola a la voz del motor. El navegador solo recibe un token de
+10 min con alcance de síntesis; `/speech/session` tiene los mismos límites de tasa. Revisar el
+consumo en la consola de Cartesia tras los ensayos y rotar la clave al terminar (§9).
 
 ## 11. Fase 2
 
