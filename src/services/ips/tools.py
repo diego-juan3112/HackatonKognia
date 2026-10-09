@@ -113,6 +113,11 @@ class IpsToolService:
         ("aggregate_ips", {"metric": "provider_count", "group_by": "department", "top_n": 5}),
         ("aggregate_ips", {"metric": "capacity_sum", "group_by": "municipality", "top_n": 5,
                            "filters": {"capacity_group": "CAMAS"}}),
+        # Added after the bench (fresh answers took 2.3-3.7 s vs live +0.5-1.6 s).
+        ("aggregate_ips", {"metric": "provider_count", "group_by": "level"}),
+        ("aggregate_ips", {"metric": "site_count"}),
+        ("aggregate_ips", {"metric": "capacity_sum", "filters": {"capacity_group": "CAMAS", "capacity_type": "Adultos"}}),
+        ("aggregate_ips", {"metric": "capacity_sum", "filters": {"capacity_group": "AMBULANCIAS"}}),
     )
 
     async def prefetch(self) -> int:

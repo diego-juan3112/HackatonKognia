@@ -170,3 +170,27 @@ Muestras pequeñas (5 por consulta en caliente); no son percentiles de liberaci�
 | Léxico (borrador de `build_lexicon.py`) | 4,3 s y 1,8 MB: 38 departamentos, **1.113 pares municipio–departamento** (1.027 nombres), **67 nombres de municipio homónimos** entre departamentos, 10.921 pares prestador–municipio (9.320 prestadores), 63 grupos y tipos de capacidad, un solo corte |
 | Analista por texto, conexión persistente (3 enunciados, esquema `AffectEstimate`) | `gemini-3.5-flash-lite` p50 1,1 s · `gpt-5.4-mini` 1,3 s · `gemini-3.5-flash` 1,4 s · `gpt-5.4-nano` 1,8 s · `gemini-3.8-flash` 2,8 s; **esquema válido 3/3 en todos**, 0 tokens de razonamiento; los cinco etiquetan frustración y confusión. Con conexión nueva por llamada, +1–1,5 s |
 | Cartesia, token de acceso | `POST /access-token` con `Cartesia-Version: 2026-08-14`, `grants.tts`, 600 s → **200 en 0,4–1,2 s**; responde solo `{token}` (el backend calcula `expires_at`); `expires_in` > 3600 → 400. La voz de `CARTESIA_VOICE_ID` es «Juan», idioma `es` |
+
+### Banco de latencia con consulta (2026-10-09, `scripts/bench_models.py`)
+
+Camino real del navegador (sesión → credencial → WebSocket → `/tools`), audio TTS a ritmo real,
+n = 10 por corrida (p95 = peor caso; indicio, no percentil de liberación), servidor local en
+Colombia. Detalle por turno y fallos literales en
+[anexos/bench-latencia-2026-10-09.md](anexos/bench-latencia-2026-10-09.md). Primer audio útil desde
+el fin de la voz, p50 / p95, en ms:
+
+| Corrida | Herramienta decidida | Primer audio útil | Notas |
+|---|---|---|---|
+| Antes, OpenAI `gpt-realtime-2.1` (prompt v2) | 6618 / 9699 | 8973 / 13885 (audible 21361 / 25095) | Aviso de IA de 11–24 s **antes** de la herramienta; 1 TIMEOUT |
+| Antes, Gemini `gemini-3.8-live` | 4175 / 5801 | 13361 / 18821 | Ídem |
+| **Después, OpenAI 2.1 (v5, sin `force_live`)** | 1885 / 2556 | **3935 / 4709** | 2/10 `fresh` (precarga); 0 fallos |
+| **Después, Gemini (v5, sin `force_live`)** | 1921 / 4353 | **4175 / 6933** | 1 `ambiguous` |
+| OpenAI `gpt-realtime` | 2343 / 2881 | 3951 / 4483 (audible 4935) | Muletilla de 2,5–3,3 s; ante `invalid` dijo «la fuente no respondió» (corregido en `for_model`) |
+| OpenAI silencio 300 ms | 1814 / 1937 | 3685 / 4554 | La mejor; ~250 ms menos. **Sin probar con pausas humanas** |
+| OpenAI `semantic_vad` high | 2245 / 4220 | 4481 / 6493 | Más lento y variable: descartado |
+
+**Decisión:** se mantienen `gpt-realtime-2.1`, `server_vad` y **500 ms**; 300 ms queda disponible por
+`REALTIME_SILENCE_DURATION_MS` si una prueba con voz humana no muestra cortes. **La meta de p95 ≤ 4,0 s
+(docs/07 §8) aún no se cumple** (OpenAI 4,7 s, Gemini 6,9 s); el reconocimiento previo empieza a
+1,4–1,9 s (meta ≤ 1,0 s). Con `force_live` en la primera consulta (comportamiento de hoy del front) la
+precarga no sirve: 0/10 `fresh`.

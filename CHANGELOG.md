@@ -47,8 +47,12 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 ### Verificado
 - Smoke local 20/20 P0; 136 pruebas offline; 8 sondas en vivo; escaneo de secretos del historial
   (56 commits, todas las ramas): sin coincidencias.
-- Banco, línea base (prompt v2): primer audio útil con consulta p50 9,0 s (OpenAI) / 13,4 s (Gemini),
-  dominado por un aviso de IA de 11–24 s antes de la herramienta. El «después» se anota en `docs/00` §6.
+- Banco de latencia (`scripts/bench_models.py`, n = 10): primer audio útil con consulta p50 **9,0 → 3,9 s**
+  (OpenAI) y **13,4 → 4,2 s** (Gemini); p95 4,7 s y 6,9 s: **la meta de 4,0 s aún no se cumple**. Se
+  mantienen `gpt-realtime-2.1`, `server_vad` y 500 ms (`docs/00` §6). Precarga ampliada a 10 agregados;
+  `for_model` aclara que ante `invalid` la fuente sí respondió.
+- Prueba en caliente: front de `main` (006d6c1) + este backend + `gpt-realtime-2.1` en Edge con
+  micrófono simulado: brief en vivo, «Un momento.», `aggregate_ips` en vivo y «9.320»; 0 errores.
 
 ### Pendiente
 - **A-21 sin verificar:** con voz sintética el modelo no distinguió tono tenso de calmado; falta

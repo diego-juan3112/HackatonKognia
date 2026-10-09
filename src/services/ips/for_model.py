@@ -74,7 +74,9 @@ def _body(name: str, env: ToolEnvelope) -> list[str]:
     if env.status == "invalid":
         msg = env.error.message if env.error else "argumentos inválidos"
         hint = f" Pista: {env.error.hint}" if env.error and env.error.hint else ""
-        return [f"La llamada no es válida: {msg}{hint} Corrige los argumentos o pregunta a la persona."]
+        # Bench 2026-10-09: on 'invalid' a model told the user "la fuente no respondió". It did.
+        return [f"La fuente SÍ respondió: lo que falló son los argumentos de la llamada ({msg}){hint}. "
+                "No digas que la fuente falló: corrige los argumentos o haz una pregunta corta a la persona."]
     if env.status == "ambiguous":
         cands = "; ".join(str(c) for c in d.get("candidates", []))
         q = d.get("question") or "¿A cuál te refieres?"

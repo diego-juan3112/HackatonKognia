@@ -80,6 +80,12 @@ async def test_prefetch_uses_the_exact_tool_queries():
     assert ds.queries[-1] in warmed  # same SoQL -> the 60 s cache in SocrataClient hits
 
 
+async def test_for_model_invalid_says_the_source_did_answer():  # bench 2026-10-09
+    env = await _svc(FakeDataset()).run("aggregate_ips", _req({"metric": "capacity_sum"}, "inv"))
+    assert env.status == "invalid" and "La fuente SÍ respondió" in env.for_model
+    assert "No digas que la fuente falló" in env.for_model
+
+
 def test_verifier_flags_invented_figures():
     evidence = [{"value": 9320, "unit": "prestadores"}, {"groups": [{"key": "Pública", "value": 998}]}]
     ok = verify("Hay 9.320 prestadores, con corte a noviembre de 2022; 998 son públicos.", evidence)
