@@ -7,13 +7,27 @@ name = "kognia-voice-agent"
 version = "0.2.0"
 description = "Base generica adaptable para el Kognia Challenge 2026"
 requires-python = ">=3.11"
-dynamic = ["dependencies"]
+# Runtime minimo de Reto 01, igual a requirements.txt (mantener en sincronia).
+# Lista estatica a proposito: Vercel instala desde pyproject.toml cuando hay
+# pyproject.toml y requirements.txt (docs/11 §3). La base generica y las
+# pruebas van en requirements-base.txt.
+dependencies = [
+    "langgraph>=1.2,<2.0",
+    "langchain-core>=1.6,<2.0",
+    "fastapi>=0.115,<1.0",
+    "uvicorn>=0.30,<1.0",
+    "httpx>=0.27,<1.0",
+    "pydantic-settings>=2.4,<3.0",
+    "pyyaml>=6.0,<7.0",
+]
+
+[tool.vercel]
+# FastAPI de Reto 01 en el runtime Python de Vercel (docs/11 §3). La misma ruta
+# es la clave de "functions" en vercel.json.
+entrypoint = "src.api.app_voice:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]
