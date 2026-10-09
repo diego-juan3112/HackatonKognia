@@ -150,3 +150,18 @@ async def test_dataset_info_is_static_and_explains_limits():
     assert "NO contiene" in env.for_model and "Puedo:" in env.for_model
     limits = await _svc(ds).run("dataset_info", _req({"topic": "limits"}))
     assert "capabilities" not in limits.data and len(limits.for_model) <= 600
+
+
+# -- idempotency key (H1, concurrency review) ---------------------------------------------------
+
+async def test_same_call_id_with_other_args_or_tool_is_a_new_call():
+    ds = (FakeDataset().on("departamento = 'Antioquia'", [{"value": "837"}])
+          .on("departamento = 'Santander'", [{"value": "597"}]))
+    svc = _svc(ds)
+    a = await svc.run("aggregate_ips", _req({"metric": "provider_count", "filters": {"department": "Antioquia"}}))
+    b = await svc.run("aggregate_ips", _req({"metric": "provider_count", "filters": {"department": "Santander"}}))
+    assert a.data["value"] == 837 and b.data["value"] == 597 and len(ds.queries) == 2
+    c = await svc.run("dataset_info", _req({"metric": "provider_count", "filters": {"department": "Antioquia"}}))
+    assert c.status == "invalid"  # other tool, same id and args: not the cached aggregate
+    again = await svc.run("aggregate_ips", _req({"filters": {"department": "Antioquia"}, "metric": "provider_count"}))
+    assert again == a and len(ds.queries) == 2  # key order does not matter
