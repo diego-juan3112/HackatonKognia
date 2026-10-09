@@ -15,8 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SCHEMA_VERSION = "1"
 
-ToolName = Literal["search_ips", "get_ips_details", "aggregate_ips", "compare_ips", "correct_context"]
-TOOL_NAMES: tuple[str, ...] = ("search_ips", "get_ips_details", "aggregate_ips", "compare_ips", "correct_context")
+ToolName = Literal["search_ips", "get_ips_details", "aggregate_ips", "compare_ips", "correct_context",
+                   "verify_registration", "area_profile", "compare_areas", "dataset_info"]
+TOOL_NAMES: tuple[str, ...] = ("search_ips", "get_ips_details", "aggregate_ips", "compare_ips", "correct_context",
+                               "verify_registration", "area_profile", "compare_areas", "dataset_info")
 
 Nature = Literal["Pública", "Privada", "Mixta"]
 Level = Literal[1, 2, 3]
@@ -43,6 +45,9 @@ class SearchIpsArgs(_Strict):
     name: str | None = None
     nature: Nature | None = None
     level: Level | None = None
+    # Contract .3: only sites that HAVE this installed capacity registered (never availability).
+    capacity_group: str | None = None
+    capacity_type: str | None = None
     limit: int = Field(default=5, ge=1, le=20)
     cursor: str | None = None
 
@@ -87,12 +92,50 @@ class CorrectContextArgs(_Strict):
     value: str = Field(min_length=1, max_length=200)
 
 
+class VerifyRegistrationArgs(_Strict):
+    """Is this provider registered in the REPS 2022 cut? (name + location, site_key or provider_code)."""
+
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    department: str | None = None
+    municipality: str | None = None
+    site_key: str | None = Field(default=None, pattern=SITE_KEY_PATTERN)
+    provider_code: str | None = Field(default=None, pattern=r"^[0-9A-Za-z]{1,20}$")
+
+
+class AreaProfileArgs(_Strict):
+    """Profile of ONE department or municipality."""
+
+    department: str | None = None
+    municipality: str | None = None
+
+
+class Area(_Strict):
+    department: str | None = None
+    municipality: str | None = None
+
+
+class CompareAreasArgs(_Strict):
+    areas: list[Area] = Field(min_length=2, max_length=3)
+    metric: Metric
+    capacity_group: str | None = None
+    capacity_type: str | None = None
+
+
+class DatasetInfoArgs(_Strict):
+    # Static: no query. Gemini rejects an OBJECT with no properties, hence the optional topic.
+    topic: Literal["all", "contents", "limits", "capabilities"] = "all"
+
+
 TOOL_ARGS: dict[str, type[BaseModel]] = {
     "search_ips": SearchIpsArgs,
     "get_ips_details": GetIpsDetailsArgs,
     "aggregate_ips": AggregateIpsArgs,
     "compare_ips": CompareIpsArgs,
     "correct_context": CorrectContextArgs,
+    "verify_registration": VerifyRegistrationArgs,
+    "area_profile": AreaProfileArgs,
+    "compare_areas": CompareAreasArgs,
+    "dataset_info": DatasetInfoArgs,
 }
 
 

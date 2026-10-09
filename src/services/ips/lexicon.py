@@ -77,6 +77,15 @@ class Lexicon:
     def department_names(self) -> list[str]:
         return [d["value"] for d in self._departments]
 
+    @property
+    def capacity_groups(self) -> list[str]:
+        return list(self._groups)
+
+    def provider_entries(self, codes: list[str]) -> list[dict[str, Any]]:
+        """Lexicon rows (name, municipality, department) of these provider codes -- names only, never figures."""
+        wanted = set(codes)
+        return [p for p in self._providers if p["code"] in wanted]
+
     def top_departments(self, n: int = 3) -> list[str]:
         return [d["value"] for d in sorted(self._departments, key=lambda d: -d.get("providers", 0))[:n]]
 

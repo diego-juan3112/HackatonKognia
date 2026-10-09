@@ -117,7 +117,8 @@ def test_cloned_voice_is_effective_only_with_openai(client):
     assert oa["contract"] == "2026-10-09.2" and oa["instructions_version"] == "reto01-ips-v1"
     setup = client.container.realtime._engines["openai"].setups[-1]  # type: ignore[attr-defined]
     assert {t.name for t in setup.tools} == {"search_ips", "get_ips_details", "aggregate_ips", "compare_ips",
-                                             "correct_context"}
+                                             "correct_context", "verify_registration", "area_profile",
+                                             "compare_areas", "dataset_info"}
 
 
 def test_style_and_seed_reach_the_instructions(client):
