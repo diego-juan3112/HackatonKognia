@@ -44,6 +44,7 @@ from models.voice import (  # noqa: E402
     SpeechSessionRequest,
     VerifyAnswerRequest,
 )
+from services.ips.tool_specs import TOOL_SPECS  # noqa: E402
 from services.ips.verify import verify as verify_figures  # noqa: E402
 from services.session_service import InvalidSession, SessionClaims  # noqa: E402
 
@@ -161,6 +162,8 @@ def create_app(build: Callable[[], VoiceContainer] | None = None) -> FastAPI:
             # Additive (contract .2): the voice the UI selects first; cloned works with OpenAI only.
             "default_voice_mode": c.realtime.default_voice_mode(),
             "cloned_voice_engines": [n for n, e in c.realtime.engines_status().items() if e["supports_cloned"]],
+            # Additive: the tool catalog the engines receive, so the admin panel can list it.
+            "tools": [{"name": t.name, "description": t.description} for t in TOOL_SPECS],
             "source": source,
             **c.info,
         }

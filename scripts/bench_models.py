@@ -60,7 +60,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-AUDIO_DIR = Path(os.environ.get("BENCH_AUDIO_DIR", r"C:\dev\kognia\bench-audio"))
+# R-05: no environment reads outside src/config.py -- the audio cache path is a CLI flag.
+DEFAULT_AUDIO_DIR = r"C:\dev\kognia\bench-audio"
+AUDIO_DIR = Path(DEFAULT_AUDIO_DIR)
 QUESTIONS = ROOT / "tests" / "fixtures" / "bench_questions.yaml"
 RESULTS = ROOT / "docs" / "anexos" / "bench-latencia-2026-10-09.md"
 CHUNK_MS = 20
@@ -745,6 +747,7 @@ def main() -> int:
     p.add_argument("--n", type=int, default=10)
     p.add_argument("--only", default="", help="ids separados por coma, p. ej. q01")
     p.add_argument("--label", default="before")
+    p.add_argument("--audio-dir", default=DEFAULT_AUDIO_DIR, help="Caché de audio TTS (fuera del repo)")
     p.add_argument("--base-url", default="http://127.0.0.1:8765")
     p.add_argument("--serve", action="store_true", help="arranca uvicorn local con --env")
     p.add_argument("--env", action="append", default=[], help="KEY=VAL para el servidor (--serve)")
@@ -755,6 +758,8 @@ def main() -> int:
     p.add_argument("--pre-wait", type=float, default=0.0,
                    help="segundos entre POST /realtime/session y el inicio de la voz (deja terminar la precarga)")
     args = p.parse_args()
+    global AUDIO_DIR
+    AUDIO_DIR = Path(args.audio_dir)
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
     return asyncio.run(main_async(args))

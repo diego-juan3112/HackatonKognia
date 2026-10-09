@@ -63,6 +63,8 @@ def test_health_is_public_and_announces_voice_modes(client):
     assert body["status"] == "ok" and body["contract"] == "2026-10-09.2"
     assert body["voice_modes"] == ["engine", "cloned"] and set(body["engines"]) == {"openai", "gemini"}
     assert body["default_voice_mode"] == "cloned" and body["cloned_voice_engines"] == ["openai"]
+    names = [t["name"] for t in body["tools"]]
+    assert "verify_registration" in names and all(t["description"] for t in body["tools"])
 
 
 def test_health_failure_is_not_cached_for_long():
