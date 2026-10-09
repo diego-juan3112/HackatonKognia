@@ -26,7 +26,7 @@ api ──HTTPS──► datos.gov.co (SODA3)   ·   api ──HTTPS──► Ge
 
 Dos proyectos de Vercel (carril A despliega `web`, carril B despliega `api`). Alternativa si
 se verifica en G1: **un solo proyecto con servicios** (Astro + Python bajo un mismo dominio,
-sin CORS). **No hay WebSocket propio, base de datos ni E5**: el audio va navegador ↔ proveedor.
+sin CORS). **No hay WebSocket propio, base de datos ni modelo de embeddings**: el audio va navegador ↔ proveedor.
 
 | Proyecto | Raíz | Rama de producción | Previews |
 |---|---|---|---|
@@ -52,8 +52,8 @@ Lectura de variables **solo** en `src/config.py` (R-05); `LANGSMITH_*` las lee l
 ## 3. Backend en Vercel
 
 - **Dependencias mínimas** (sin `torch`, `sentence-transformers` ni `psycopg`): `fastapi`, `httpx`, `pydantic-settings`, `pyyaml`, `langgraph`, `langchain-core` y `uvicorn` (solo contenedor/local). El app de voz llama a Gemini, OpenAI y Cartesia con `httpx`: **no** usa `langchain-google-genai` ni `langchain-openai`. Medido el 2026-10-09: `site-packages` de ~63 MB (límite 500 MB) e importación de `api.app_voice` en ~1 s.
-- **Dónde está cada cosa:** `requirements.txt` = runtime mínimo de Reto 01; `requirements-base.txt` = `-r requirements.txt` + base genérica + pruebas (desarrollo: `pip install -r requirements-base.txt`). `pyproject.toml` repite el runtime mínimo como lista **estática** en `[project].dependencies` porque Vercel, si hay `pyproject.toml` y `requirements.txt`, instala desde `pyproject.toml` (con `uv`). **Las dos listas se mantienen iguales.**
-- **Entrypoint:** `[tool.vercel] entrypoint = "src.api.app_voice:app"` en `pyproject.toml` (mecanismo documentado por Vercel). `vercel.json` fija `regions: ["iad1"]`, `maxDuration` 60 s y `excludeFiles` (`tests/`, `docs/`, `web/`, `migrations/`, `infra/`, `scripts/`, `spikes/`, `.venv*`, `.env*`); `.vercelignore` evita subir `.env` y lo mismo con `vercel deploy`. El bundle incluye `src/`, `config/` y `data/lexicon.json` (las rutas salen de `src/config.py`, relativas a la raíz).
+- **Dónde está cada cosa:** `requirements.txt` = runtime mínimo de Reto 01; `requirements-dev.txt` = `-r requirements.txt` + pruebas + scripts de medición (desarrollo: `pip install -r requirements-dev.txt`). `pyproject.toml` repite el runtime mínimo como lista **estática** en `[project].dependencies` porque Vercel, si hay `pyproject.toml` y `requirements.txt`, instala desde `pyproject.toml` (con `uv`). **Las dos listas se mantienen iguales.**
+- **Entrypoint:** `[tool.vercel] entrypoint = "src.api.app_voice:app"` en `pyproject.toml` (mecanismo documentado por Vercel). `vercel.json` fija `regions: ["iad1"]`, `maxDuration` 60 s y `excludeFiles` (`tests/`, `docs/`, `web/`, `scripts/`, `spikes/`, `.venv*`, `.env*`); `.vercelignore` evita subir `.env` y lo mismo con `vercel deploy`. El bundle incluye `src/`, `config/` y `data/lexicon.json` (las rutas salen de `src/config.py`, relativas a la raíz).
 - **Despliegue del proyecto `api` (carril B, desde la raíz del worktree):**
   ```bash
   npx vercel login
@@ -65,7 +65,7 @@ Lectura de variables **solo** en `src/config.py` (R-05); `LANGSMITH_*` las lee l
 - **Límites a recordar:** cuerpo de petición y respuesta **4,5 MB** (los recortes WAV de ≤ 30 s caben, [08](08-contrato-voz-en-vivo.md) §4); duración máxima 300 s en Hobby (las llamadas del reto duran segundos); memoria 2 GB / 1 vCPU.
 - **Región:** la predeterminada es `iad1`; medir una alternativa más cercana a Colombia en G1.
 - **Calentamiento:** el brief ([09](09-datos-en-vivo-datos-gov-co.md) §8) abre la conexión a la fuente; el primer arranque en frío se mide en G1.
-- **Dependencias — resuelto en G1 con la salida (1):** `requirements.txt` es el conjunto mínimo de Reto 01 y lo pesado (E5, Postgres, `langchain-google-genai`, pruebas) pasó a `requirements-base.txt`; `pyproject.toml` dejó de leer `requirements.txt` de forma dinámica. Comandos en [01](01-arquitectura.md) §9.
+- **Dependencias — resuelto en G1 con la salida (1):** `requirements.txt` es el conjunto mínimo de Reto 01; lo pesado de la base genérica (modelo de embeddings, controlador de base de datos, `langchain-google-genai`) se retiró con D-23 y las pruebas viven en `requirements-dev.txt`; `pyproject.toml` dejó de leer `requirements.txt` de forma dinámica. Comandos en [01](01-arquitectura.md) §9.
 - **Tope de 20 min (D-15):** si no empaqueta o el arranque en frío es inaceptable, se pasa al plan B.
 
 ## 4. Frontend en Vercel
@@ -76,13 +76,12 @@ HTTPS es obligatorio para el micrófono; los previews de rama sirven para probar
 ## 5. Plan B: contenedor
 
 El mismo backend corre en un contenedor sin cambiar código; solo cambia `PUBLIC_API_URL`.
-El `Dockerfile` (Python 3.12-slim, usuario sin privilegios) instala solo `requirements.txt` (sin E5),
+El `Dockerfile` (Python 3.12-slim, usuario sin privilegios) instala solo `requirements.txt`,
 copia `src/`, `config/` y `data/` y arranca `uvicorn api.app_voice:app --app-dir src` en `${PORT:-8000}`;
 `.dockerignore` deja fuera `.env`, `tests/`, `docs/` y `web/`. Las claves se pasan al ejecutar:
-`docker build -t kognia-api .` y `docker run --rm -p 8000:8000 --env-file .env kognia-api`. Hosts
-posibles: Azure Container Apps (regiones permitidas por Azure for Students: `spaincentral`,
-`westus`, `canadacentral`, `belgiumcentral`, `chilecentral`), Render o Railway. **`terraform apply` es
-siempre manual (R-21).** Mantener una instancia caliente durante el jurado.
+`docker build -t kognia-api .` y `docker run --rm -p 8000:8000 --env-file .env kognia-api`. Host:
+cualquiera que ejecute un contenedor con el `Dockerfile` (Render, Railway u otro); no hay
+infraestructura como código en el repo (D-23). Mantener una instancia caliente durante el jurado.
 
 ## 6. Producción, previews y la URL que se entrega
 
@@ -148,5 +147,5 @@ consumo en la consola de Cartesia tras los ensayos y rotar la clave al terminar 
 
 ## 11. Fase 2
 
-Azure Container Apps con Terraform y Twilio Media Streams (μ-law 8 kHz, un track por hablante) quedan
-en el backlog ([13](13-diferenciadores-y-backlog.md), B-08 y B-09).
+La automatización del despliegue del contenedor y Twilio Media Streams (μ-law 8 kHz, un track por
+hablante) quedan en el backlog ([13](13-diferenciadores-y-backlog.md), B-08 y B-09).

@@ -17,8 +17,6 @@ venv/
 tests/
 docs/
 web/
-migrations/
-infra/
 scripts/
 spikes/
 .claude/

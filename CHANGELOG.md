@@ -5,6 +5,29 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Removed — Limpieza (rama `chore/limpieza-repo`, 2026-10-09, D-23)
+- **Base genérica retirada:** chat con cédula (rutas `auth`, `chat`, `conversations`, `users`,
+  `api/main.py`, `dependencies.py`), PostgreSQL + pgvector (`integrations/db`, `migrations/`,
+  `docker-compose.yml`), RAG con E5 (`integrations/retrieval`, `scripts/ingest.py`), grafo de chat
+  genérico (`services/graph`), dominio de juguete `faq_demo`, `platform_compat.py`, scripts
+  `migrate`/`seed`/`serve`, `infra/terraform`, sus pruebas y dobles (`tests/integration`, `FakeChatModel`…).
+- **Documentación retirada:** `docs/04-rag.md`, `docs/sdd_ips/`, `docs/diagrams/`, `docs/faq_demo/`,
+  la skill `.claude/skills/azure-voice-live` y el anexo de restricciones de Azure OpenAI para estudiantes.
+- `requirements-base.txt` pasa a `requirements-dev.txt` (runtime + pruebas + scripts de medición).
+- **Todo queda en el historial de git** (último commit con la base: `0a5a625`).
+
+### Changed — Limpieza de documentación (D-23)
+- `docs/00`: nueva decisión **D-23**; D-02, D-05, D-06, D-08 y la parte del grafo genérico de D-07,
+  retiradas; §1 y §2 sin base genérica ni Terraform.
+- `AGENTS.md`: R-07, R-12 a R-15, R-18, R-19 y R-21 marcadas **Retiradas (D-23)** sin renumerar;
+  R-02 y R-16 reescritas para la app actual; sin la fila de `docs/04`.
+- `CLAUDE.md` sin la skill de Azure Voice Live ni las notas de Docker/Terraform MCP.
+- `docs/02` solo con los puertos vigentes y los dobles reales; `docs/05` con R-16/R-17, sondas en vivo
+  y `npm test`; `docs/06`, `07`, `09`–`13` y `docs/anexos/README.md` sin referencias a lo retirado
+  (plan B = contenedor con el `Dockerfile` en cualquier host).
+- `vercel.json`, `.vercelignore` y `.dockerignore` sin los patrones de `migrations/`, `infra/` y
+  `docker-compose.yml` (ya no existen; el comportamiento no cambia).
+
 ### Integración en `main` (2026-10-09 ≈ 14:15) — backend completo + front de los carriles A y B
 - **Front:** consentimiento explícito «Usar mi voz» (R-26), la conversación se corta al salir de la consola,
   transcripción parcial del agente, `for_model` como salida de herramienta, sin `forceLive` en la primera

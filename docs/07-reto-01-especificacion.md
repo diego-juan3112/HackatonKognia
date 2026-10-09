@@ -20,7 +20,8 @@ con baja latencia. El jurado lo ejecuta desde la URL en 10 minutos (guion P1–P
 ## 2. Fuentes y supuestos
 
 Fuentes: las cinco capturas del reto, las tres transcripciones del arranque, el libro
-`V2.xlsx` (leído por el paquete sdd_ips) y ese mismo paquete.
+`V2.xlsx` (leído por el paquete sdd_ips) y ese mismo paquete (retirado del repo con D-23;
+queda en el historial de git).
 
 **Supuestos confirmados por el equipo el 2026-10-09:**
 
@@ -39,10 +40,11 @@ Fuentes: las cinco capturas del reto, las tres transcripciones del arranque, el 
 no chocar con las reglas `R-xx` del repo. Esta spec usa `F-xx` (funcional), `NF-xx`
 (no funcional) y `A-xx` (aceptación, los mismos IDs del paquete sdd_ips).
 
-## 3. Reconciliación con `docs/sdd_ips`
+## 3. Reconciliación con el paquete sdd_ips (histórico)
 
-`docs/sdd_ips/` (generado por GPT el 2026-10-09) es **insumo**. Los contratos vigentes son
-`docs/07–13`; ante conflicto, mandan estos.
+El paquete sdd_ips (generado por GPT el 2026-10-09) fue **insumo** de estos documentos. **El
+paquete sdd_ips se retiró del repo (D-23); queda en el historial** (último commit con él:
+`0a5a625`). Los contratos vigentes son `docs/00–13`. La tabla registra qué se tomó de él.
 
 | Pieza de sdd_ips | Tratamiento | Vive en |
 |---|---|---|

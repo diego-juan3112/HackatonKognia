@@ -99,7 +99,7 @@ conversación vive en el navegador.
 # 1. Clonar e instalar
 git clone https://github.com/diego-juan3112/HackatonKognia.git && cd HackatonKognia
 python -m venv .venv && . .venv/bin/activate      # Windows: .\.venv\Scripts\activate
-pip install -r requirements-base.txt              # runtime + pruebas
+pip install -r requirements-dev.txt               # runtime + pruebas
 cp .env.example .env                              # y completa las claves (ver tabla)
 
 # 2. API  →  http://127.0.0.1:8000/health
@@ -161,7 +161,7 @@ Base: `/api` en Vercel, raíz en local. Todas las rutas salvo `/health` y `/sess
 ## 🧪 Calidad
 
 ```bash
-pytest                                   # 156 pruebas del backend, sin red ni claves
+pytest                                   # 85 pruebas del backend, sin red ni claves
 cd web && npm test                       # 134 pruebas de contrato del front
 KOGNIA_LIVE=1 pytest tests/live -m live  # sondas contra datos.gov.co real
 python -m scripts.smoke_public --base-url <URL>/api --origin <URL> --web-url <URL>
@@ -222,7 +222,7 @@ Construido con asistencia de IA, como exige el reto (RETO-M04):
 
 - **Claude Code (Anthropic)** generó la mayor parte del backend (`src/`), los scripts, las pruebas, los
   contratos de `docs/` y buena parte del front (`web/`), a partir de los requisitos y decisiones del equipo.
-- **GPT (OpenAI)** generó el paquete de planeación inicial (`docs/sdd_ips`).
+- **GPT (OpenAI)** generó el paquete de planeación inicial (sdd_ips; ya retirado del repo, queda en el historial de git).
 - El equipo definió el alcance y las decisiones, dirigió y revisó el trabajo, y lo probó en vivo. Las
   mediciones citadas salen de llamadas reales, registradas en `docs/anexos`.
 

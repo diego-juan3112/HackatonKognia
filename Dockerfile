@@ -1,5 +1,5 @@
 # Plan B de Reto 01 (docs/11 §5): el mismo app de voz que va a Vercel, en un
-# contenedor. Solo el runtime minimo (requirements.txt): sin E5, torch ni Postgres.
+# contenedor. Solo el runtime minimo (requirements.txt), sin dependencias de pruebas.
 #   docker build -t kognia-api .
 #   docker run --rm -p 8000:8000 --env-file .env kognia-api
 FROM python:3.12-slim
@@ -25,5 +25,5 @@ USER app
 ENV PORT=8000
 EXPOSE 8000
 
-# Forma shell para que ${PORT} lo fije el host (Container Apps, Render, Railway).
+# Forma shell para que ${PORT} lo fije el host (Render, Railway u otro).
 CMD exec uvicorn api.app_voice:app --app-dir src --host 0.0.0.0 --port ${PORT:-8000}

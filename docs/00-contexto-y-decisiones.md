@@ -16,22 +16,16 @@ acepta: [07-reto-01-especificacion.md](07-reto-01-especificacion.md). Cómo
 trabajamos de a dos: [12-guia-de-trabajo-2-personas.md](12-guia-de-trabajo-2-personas.md).
 
 Hasta el 2026-10-08 el reto era **desconocido** y la fase consistía en una base
-genérica adaptable (reglas R-06 y R-07). **Esa premisa terminó (D-09):** el reto se
-sirve como *domain pack* (configuración y periferia) y **el núcleo genérico sigue
-sin editarse** (R-02). Reto 01 prescinde de base de datos, RAG, embeddings y
-cédula: su contexto es **la API en vivo**. `docs/04-rag.md` describe la base
-genérica y **no aplica a Reto 01**.
+genérica adaptable (chat con identificación, base de datos, recuperación y un grafo
+de chat). Al conocerse el reto, Reto 01 se sirvió como *domain pack* sin tocar esa
+base (D-09) y **prescindiendo de base de datos, recuperación, embeddings y datos
+personales**: su contexto es **la API en vivo**. Como la app de Reto 01 nunca la usó,
+**la base genérica se retiró del repo (D-23)**; queda en el historial de git (último
+commit con ella: `0a5a625`). El único dominio es `config/domains/reto01_ips.yaml`.
 
-El paquete sdd_ips (generado por GPT el 2026-10-09) es
-**insumo**: los contratos vigentes son `docs/07–13`; ante conflicto mandan estos
-([07](07-reto-01-especificacion.md) §3).
-
-### Dominio de juguete
-
-El repo trae un dominio trivial (un FAQ: `config/domains/faq_demo.yaml` y
-`docs/faq_demo/`) que valida que el núcleo corre de punta a punta. No es el
-producto (regla R-07). El dominio de Reto 01 es `config/domains/reto01_ips.yaml`
-*(planeado)*; `faq_demo` se borra cuando el dominio real pase la aceptación.
+El paquete de planeación sdd_ips (generado por GPT el 2026-10-09) fue **insumo** de
+`docs/07–13`; se retiró del repo con D-23 y queda en el historial. Los contratos
+vigentes son `docs/00–13` ([07](07-reto-01-especificacion.md) §3).
 
 ## 2. Stack
 
@@ -43,15 +37,18 @@ producto (regla R-07). El dominio de Reto 01 es `config/domains/reto01_ips.yaml`
 | Voz | Tiempo real desde el navegador: OpenAI Realtime `gpt-realtime-2.1` (motor 1) y Gemini Live `gemini-3.8-live` (motor 2) (`VoiceEngine`) + voz clonada opcional con Cartesia (`SpeechSynthesizer`) | D-11, D-20 |
 | Datos | datos.gov.co **en vivo** por SODA3 con `httpx` | D-12 |
 | Avatar 3D | VRM estilo anime con `three` + `@pixiv/three-vrm`, carga opcional con visualizador de respaldo — ver §4 | D-21 (reemplaza la parte «sin avatar 3D» de D-17) |
-| Base de datos, RAG, embeddings | PostgreSQL + pgvector + E5: **base genérica; no se usan en Reto 01** | D-02 y D-05 no aplican a Reto 01 (D-09) |
+| Base de datos, recuperación, embeddings | Ninguno: la app no tiene base de datos | **Retirados (D-23)**; D-02 y D-05 retiradas |
 | Frontend | Astro + TypeScript sin framework | D-17 |
-| Infraestructura como código | Terraform | Fijo (Azure Container Apps queda como alternativa, no es la ruta de Reto 01) |
+| Infraestructura como código | Ninguna en el repo | **Retirada (D-23)**; plan B = el `Dockerfile` en cualquier host ([11](11-despliegue.md) §5) |
 | Despliegue | Vercel (Astro estático + FastAPI solo HTTP), Dockerfile de respaldo | D-15 |
 | Observabilidad | LangSmith (trazas y feedback) + HUD de latencia | Fijo |
 | Testing | pytest (+ Playwright para el navegador) | Fijo |
 
-No se agregan dependencias fuera de esta lista sin discutirlo (regla R-10). Las
-de Reto 01 se anotan aquí **al implementarlas**, con su motivo: `httpx` como
+No se agregan dependencias fuera de esta lista sin discutirlo (regla R-10). Con
+D-23 salieron las de la base genérica (controlador de PostgreSQL, pgvector, modelo de
+embeddings local, `langchain-google-genai`); `requirements.txt` es el runtime de la API
+y `requirements-dev.txt` le suma pruebas y scripts de medición. Las de Reto 01 se
+anotan aquí **al implementarlas**, con su motivo: `httpx` como
 dependencia de ejecución (cliente SODA, D-12; y adaptadores REST de Gemini, OpenAI
 y Cartesia en `integrations/`), y `langchain-xai` / `langchain-anthropic` solo si se
 activan los perfiles opcionales. **`langchain-openai` no hace falta:** el analista
@@ -96,7 +93,7 @@ El token de acceso se midió con la clave del equipo (§6).
 | STT | `gemini-3.5-transcribe` | OK, 2.0 s, transcripción correcta |
 | Visión | `gemini-3.5-flash-lite` | OK, 2.0 s |
 | Tool calling | `gemini-3.5-flash-lite` | OK, 0.9 s |
-| Embeddings | `gemini-embedding-001`, `gemini-embedding-2` | OK, 3072 dims (la base genérica usa `vector(768)`) |
+| Embeddings | `gemini-embedding-001`, `gemini-embedding-2` | OK, 3072 dims (la base genérica, hoy retirada por D-23, usaba 768) |
 | Texto | `gemini-3.5-pro`, `gemini-2.5-flash`, `text-embedding-004` | 404 |
 
 Los modelos de tiempo real se midieron en G2 (2026-10-09): ver la sección de voz arriba y
@@ -120,28 +117,29 @@ que «distribución» cubra un repo público es lectura del equipo; no se reescr
 
 | Código | Decisión | Motivo | Fecha |
 |---|---|---|---|
-| D-01 | **Azure AI Voice Live descartado.** La skill `.claude/skills/azure-voice-live/` queda como material histórico: su patrón puerto/adaptador sigue siendo la base de `VoicePort`, sus detalles de protocolo (eventos WebSocket, `session.update`) ya no aplican | Costo | Antes de 0.4.0 |
-| D-02 | **PostgreSQL + pgvector** (`pgvector/pgvector:pg17`, puerto 5433) como base relacional y vector store. Chroma descartado. *La base genérica lo conserva; **no aplica a la app de Reto 01** (D-09).* | Un chat agéntico necesita datos relacionales junto a los vectores; dos almacenes son dos almacenes que sincronizar | 2026-09-22 (0.3.0) |
+| D-01 | **Azure AI Voice Live descartado.** La skill de integración que lo documentaba se retiró del repo con D-23 (queda en el historial) | Costo | Antes de 0.4.0 |
+| D-02 | **Retirada por D-23.** *(Era: PostgreSQL + pgvector como base relacional y vector store; Chroma descartado.)* | Un chat agéntico necesita datos relacionales junto a los vectores; dos almacenes son dos almacenes que sincronizar | 2026-09-22 (0.3.0) |
 | D-03 | **LLM: Gemini `gemini-3.5-flash-lite`** con `thinking_level=minimal`. Sin proveedores de respaldo en el factory. **Reemplazada por D-10.** | Medido con nuestro factory: ~1 s por llamada y 15/15 correctas en las tres formas de prompt del grafo. NVIDIA tardaba 9-20 s por turno | 2026-09-28 (0.4.0) |
 | D-04 | **LangChain/LangGraph línea 1.x** (`langchain-core` 1.6, `langgraph` 1.2) | La integración actual de Gemini lo exige | 2026-09-28 (0.4.0) |
-| D-05 | **Embeddings `intfloat/multilingual-e5-base`**, local, 768 dims. Descartados los modelos en inglés y LaBSE. *La base genérica lo conserva; **no aplica a Reto 01** (D-09).* | El corpus es en español: los modelos en inglés fallarían en silencio; LaBSE está optimizado para emparejar traducciones, no para recuperación | 2026-09-22 (0.3.0) |
-| D-06 | **Identificación por cédula sin contraseña.** **No es autenticación real** ([01-arquitectura.md](01-arquitectura.md) §8). *La base genérica lo conserva; **Reto 01 no usa cédula** (D-09, sesión anónima firmada: R-28).* | Alcance de la demo | 2026-09-22 (0.3.0) |
-| D-07 | **Grafo escrito a mano** (`StateGraph`) en vez de `create_react_agent`. *En el bucle de voz de Reto 01 rige la excepción acotada D-14.* | En un agente ReAct el LLM controla el bucle vía tool-calls, lo que incumple R-04 | 2026-09-17 (0.2.0) |
-| D-08 | **Migraciones en SQL plano**, sin ORM ni Alembic *(base; Reto 01 no usa base de datos)* | Seis tablas: cualquiera debe poder leer el archivo y saber cómo es la base | 2026-09-22 (0.3.0) |
-| D-09 | **Reto 01 conocido: se sirve como domain pack** (`config/domains/reto01_ips.yaml` + `services/ips`); el núcleo genérico no se edita (R-02). Reto 01 **prescinde de base de datos, RAG, embeddings y cédula**: el contexto es la API en vivo | El reto dejó de ser desconocido; la lógica del dominio entra por configuración y periferia. Reformula R-06 y R-07 | 2026-10-09 |
+| D-05 | **Retirada por D-23.** *(Era: embeddings `intfloat/multilingual-e5-base`, locales, 768 dims; descartados los modelos en inglés y LaBSE.)* | El corpus es en español: los modelos en inglés fallarían en silencio; LaBSE está optimizado para emparejar traducciones, no para recuperación | 2026-09-22 (0.3.0) |
+| D-06 | **Retirada por D-23.** *(Era: identificación por documento sin contraseña, que no era autenticación real.)* La app actual usa sesión anónima firmada (R-28) | Alcance de la demo | 2026-09-22 (0.3.0) |
+| D-07 | **Grafo escrito a mano** (`StateGraph`) en vez de `create_react_agent`. *La parte del grafo de chat genérico, **retirada por D-23**; sigue vigente para el analista de afecto (`services/analyst/`). En el bucle de voz de Reto 01 rige la excepción acotada D-14.* | En un agente ReAct el LLM controla el bucle vía tool-calls, lo que incumple R-04 | 2026-09-17 (0.2.0) |
+| D-08 | **Retirada por D-23.** *(Era: migraciones en SQL plano, sin ORM ni Alembic.)* | Seis tablas: cualquiera debe poder leer el archivo y saber cómo es la base | 2026-09-22 (0.3.0) |
+| D-09 | **Reto 01 conocido: se sirve como domain pack** (`config/domains/reto01_ips.yaml` + `services/ips`); el núcleo genérico no se edita (R-02). Reto 01 **prescinde de base de datos, recuperación, embeddings y datos personales**: el contexto es la API en vivo. *Después, D-23 retiró el núcleo genérico.* | El reto dejó de ser desconocido; la lógica del dominio entra por configuración y periferia. Reformula R-06 y R-07 | 2026-10-09 |
 | D-10 | **LLM multi-proveedor con perfiles** para el analista y las tareas de texto: `fast` = Gemini **`gemini-3.5-flash-lite`**, `deep` = OpenAI **`gpt-5.4-mini`**; Grok y Claude opcionales por configuración; cadena de respaldo `fast → deep`. *Reemplaza a D-03.* **IDs cerrados en G3** (§6): esquema válido 3/3 en todos los candidatos, 0 tokens de razonamiento; `gemini-3.8-flash` descartado por latencia (p50 2,8 s contra un plazo de 3 s) | Se quiere comparar fortalezas (velocidad vs razonamiento) y tener respaldo ante cuota o caída | 2026-10-09 |
 | D-11 | **Voz en tiempo real desde el navegador**: contrato `VoiceEngine` con adaptadores **OpenAI Realtime** (`gpt-realtime-2.1`, motor 1) y **Gemini Live** (`gemini-3.8-live`, motor 2), credenciales efímeras emitidas por el backend. La cascada STT→LLM→TTS es el motor 3 (fase 2). *Retira R-08.* **Cerrada en G2.** | Es lo realista para 2 personas en ~6 h, con la mejor latencia e interrupciones; usa las APIs pagas del equipo | 2026-10-09 |
 | D-12 | **datos.gov.co en vivo** por SODA3 con `httpx` (token si existe; el acceso anónimo funcionó hoy pero no es garantía); SODA2 de respaldo; **sin espejo**. `sodapy` solo en scripts | El jurado verifica la conexión durante la demo; `sodapy` es SODA2, síncrono y sin mantenimiento desde 2022-08-31 | 2026-10-09 |
 | D-13 | **Herramientas tipadas y sobre de evidencia** ([09](09-datos-en-vivo-datos-gov-co.md)): el modelo envía JSON, nunca SoQL; el servidor arma la consulta con columnas y funciones permitidas | Exactitud (grano: IPS ≠ sedes ≠ filas) y seguridad | 2026-10-09 |
 | D-14 | **Excepción acotada a R-04** en el bucle de voz: el motor de voz decide los turnos y qué herramienta llamar; el backend valida cada llamada contra una lista cerrada y es **determinista** en estilo, límites y honestidad. Cualquier otra transición sigue siendo del grafo | Un motor de voz nativo controla el turno; es el costo de la latencia. *Confirmada por el equipo* | 2026-10-09 |
 | D-15 | **Despliegue en Vercel** (Astro estático + FastAPI solo HTTP; el audio va navegador ↔ proveedor) con **Dockerfile de respaldo**; tope de 20 min para decidir el empaquetado. *Reemplaza «Azure Container Apps (fijo)».* | Despliegue rápido; Vercel limita la conexión a 300 s (Hobby) y el cuerpo a 4,5 MB, y sin WebSocket propio no importa | 2026-10-09 (pendiente de cerrar con G1) |
-| D-16 | **Afecto multimodal (texto + voz) y política de estilo** («psicología»): estimaciones inciertas, preferencia explícita por encima, sin diagnóstico, con aviso, consentimiento y opción de apagarlo ([10](10-modelos-afecto-y-recuperacion.md) §6) | Decisión del equipo: es Must. Conserva las salvaguardas de sdd_ips | 2026-10-09 |
+| D-16 | **Afecto multimodal (texto + voz) y política de estilo** («psicología»): estimaciones inciertas, preferencia explícita por encima, sin diagnóstico, con aviso, consentimiento y opción de apagarlo ([10](10-modelos-afecto-y-recuperacion.md) §6) | Decisión del equipo: es Must. Conserva las salvaguardas del paquete de planeación inicial (retirado con D-23) | 2026-10-09 |
 | D-17 | **Frontend Astro + TypeScript sin framework**; ~~sin avatar 3D en el MVP~~ (*esa parte, reemplazada por D-21*) | Tiempo; Three.js plano ya se midió y queda para la fase 2 | 2026-10-09 |
 | D-18 | **Estado canónico en el navegador**, recuperación acotada (≤ 2 intentos de motor y ≤ 2 de fuente, plazo de 6 s) y **conmutación de motor** con un sobre de contexto neutral ([10](10-modelos-afecto-y-recuperacion.md) §3–§5) | Sin base de datos y con sesiones de proveedor que caducan (Gemini ≈ 10 min) | 2026-10-09 |
 | D-19 | **`main` es la rama de integración y de producción**: los docs se fusionan a `main` en la Puerta 0 y ambas personas parten de ahí ([12](12-guia-de-trabajo-2-personas.md)) | Simplicidad para dos personas; Vercel despliega producción desde `main` | 2026-10-09 |
 | D-20 | **Voz clonada opcional con Cartesia.** Con «voz clonada» el motor en tiempo real (D-11) sigue escuchando, decidiendo el turno y llamando herramientas, pero entrega **solo texto**; el navegador lo sintetiza por frases con el puerto de cliente `SpeechSynthesizer` (adaptador Cartesia, token de acceso emitido por el backend, R-28) y lo reproduce con el mismo reproductor ([08](08-contrato-voz-en-vivo.md) §15). **La voz del motor sigue siendo la base y la degradación automática** (R-25); la clonada es la voz por omisión solo si G2 confirma salida de solo texto, latencia dentro de los objetivos de [07](07-reto-01-especificacion.md) §8 y texto escuchado fiable. Solo se clona la voz de una persona del equipo, con su consentimiento, y se avisa de que es voz sintética. *No reemplaza a D-11; levanta el «Won't: voz clonada» de [07](07-reto-01-especificacion.md) §4.* | El equipo contrató Cartesia para tener voz propia; hacerlo como puerto opcional evita que un proveedor más ponga en riesgo la demo | 2026-10-09 |
 | D-22 | **Voz clonada por defecto con OpenAI** (amplía D-20). `GET /health` anuncia `default_voice_mode = cloned` (si Cartesia está configurado) y `cloned_voice_engines = ["openai"]`. Con Gemini la voz es la del motor: **los tres modelos Gemini Live disponibles rechazan la salida de solo texto** (`1007 … (TEXT) is not supported`, verificado el 2026-10-09 con `gemini-3.8-live`, `gemini-3.1-flash-live-preview` y `gemini-2.5-flash-native-audio-latest`). Cartesia verificado: primer audio a 321 ms con la conexión caliente (abrirla tarda 1,5 s), 24 marcas por palabra en español. La voz del motor sigue siendo la degradación automática (R-25) | Decisión del equipo: identidad de voz propia. Riesgo: la latencia de extremo a extremo con voz clonada no está medida y el plan Pro permite 3 síntesis simultáneas | 2026-10-09 |
 | D-21 | **Avatar 3D en el MVP:** VRM estilo anime con `three` + `@pixiv/three-vrm`, cargado de forma opcional (si falla, visualizador de respaldo). *Reemplaza la parte «sin avatar 3D» de D-17.* Dependencias nuevas registradas en §2 (R-10): `three`, `@pixiv/three-vrm`, `@lucide/astro`, `astro`. Modelo y licencia en §4 | Decisión del equipo: el asistente habla con voz clonada masculina y lleva avatar masculino | 2026-10-09 |
+| D-23 | **Se retira la base genérica** (chat con cédula, PostgreSQL + pgvector, RAG con E5, grafo genérico y API de chat) para dejar solo la app de Reto 01; queda en el historial de git (último commit con ella: `0a5a625`). Salen también sus pruebas, migraciones, `docker-compose.yml`, `infra/terraform`, los scripts de base de datos, el dominio de juguete, `docs/04`, el paquete sdd_ips, los diagramas y la skill de Azure Voice Live. *Retira D-02, D-05, D-06, D-08, la parte del grafo genérico de D-07 y las reglas R-07, R-12 a R-15, R-18, R-19 y R-21.* | La app de Reto 01 nunca importaba esos módulos (análisis de importaciones desde `src/api/app_voice.py`: 36 módulos inalcanzables); mantenerlos confundía a personas y asistentes | 2026-10-09 |
 
 ## 6. Mediciones del 2026-10-09 (consultas reales)
 

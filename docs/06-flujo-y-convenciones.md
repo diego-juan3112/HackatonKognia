@@ -16,7 +16,7 @@
 - Type hints obligatorios en toda función pública.
 - Documentación y docstrings en inglés.
 - Archivos en `snake_case`, clases en `PascalCase`.
-- Cada nodo de LangGraph vive en su propio archivo bajo `services/graph/nodes/`.
+- Cada nodo de LangGraph vive en su propio archivo bajo `services/analyst/nodes/`.
 - Al citar una regla o decisión desde código, comentario, commit o PR, usar su
   código (`R-04`, `D-03`), no la sección de un documento.
 - **R-20.** Todo cambio a nivel de feature queda registrado en `CHANGELOG.md`
@@ -42,7 +42,7 @@
 Un commit, un cambio lógico.
 
 ```
-feat: agrega nodo de confirmación de cita al grafo
+feat: agrega nodo de fusión de afecto al analista
 fix: corrige reconexión de websocket en el cliente de voz
 docs: actualiza README con instrucciones de despliegue
 refactor: extrae lógica de reintento a utilidad compartida
@@ -54,13 +54,13 @@ chore: actualiza dependencias de requirements.txt
 
 Pipeline en GitHub Actions, en cada PR contra `main`:
 
-1. Lint + type-check (`ruff`, `mypy`)
-2. `pytest`
-3. `terraform plan` (solo plan)
-4. Build de la imagen de contenedor
+1. Lint (`ruff`)
+2. `pytest` (offline) y, en `web/`, `npm test` y `npm run build`
+3. Build de la imagen del `Dockerfile` (plan B, [11](11-despliegue.md) §5)
 
-**R-21.** `terraform apply` es siempre manual, ejecutado por una persona,
-nunca por el pipeline.
+**R-21. Retirada (D-23):** no hay infraestructura como código en el repo
+(`infra/terraform` se eliminó y queda en el historial), así que no hay plan ni
+aplicación de infraestructura que proteger.
 
 Para Reto 01 basta, en cada *push* a `main` o rama de carril, `pytest` (offline) y
 `npm run build` en `web/`; Vercel genera el *preview* de cada rama.
@@ -73,10 +73,9 @@ en esta tabla. Agregar uno es una decisión que se registra aquí.
 | Tipo | Nombre | Uso |
 |---|---|---|
 | MCP | Azure MCP | Consultar recursos de Azure |
-| MCP | Terraform MCP | Requiere Docker corriendo |
 | MCP | Context7 | Documentación de librerías al día |
 | Plugin | `superpowers` | Flujo brainstorm / plan / execute |
 | Plugin | `frontend-design` | Panel Astro y avatar |
 | Plugin | `security-guidance` | Hooks en segundo plano |
 | Plugin | `playwright` | Pruebas de navegador |
-| Skill | `archify` (tt-a1i, MIT, v3.0.1) | Diagramas HTML validados contra el código. Instalada a nivel de usuario (`~/.claude/skills/archify`), no en el repo. Revisada: sin dependencias npm; su única llamada de red es un chequeo de versión, que se apaga con `ARCHIFY_UPDATE_CHECK_DISABLED=1`. Los diagramas viven en este repo, en `docs/diagrams/` |
+| Skill | `archify` (tt-a1i, MIT, v3.0.1) | Diagramas HTML validados contra el código. Instalada a nivel de usuario (`~/.claude/skills/archify`), no en el repo. Revisada: sin dependencias npm; su única llamada de red es un chequeo de versión, que se apaga con `ARCHIFY_UPDATE_CHECK_DISABLED=1`. Los diagramas HTML que generó describían la base genérica y se retiraron con D-23 (quedan en el historial); hoy la arquitectura vigente está en [01](01-arquitectura.md) |

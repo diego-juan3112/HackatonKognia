@@ -20,10 +20,7 @@ __pycache__/
 # tambien excluia web/src/scripts/ y el build de Astro fallaba en Vercel (2026-10-09).
 /tests/
 /docs/
-/migrations/
-/infra/
 /scripts/
 /spikes/
 /.claude/
 /Dockerfile
-/docker-compose.yml

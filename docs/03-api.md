@@ -6,8 +6,8 @@ La API del agente de voz (`src/api/app_voice.py`). En Vercel vive bajo `/api` (V
 
 ## API de voz (contrato `2026-10-09.2`)
 
-Lo anterior describe la API de la base genérica (chat con cédula). La app de Reto 01 es
-**solo HTTP**, sin base de datos ni cédula; el audio no pasa por ella
+Es la única API del repo: la API de chat de la base genérica se retiró con D-23 (queda en el
+historial). La app de Reto 01 es **solo HTTP**, sin base de datos ni datos personales; el audio no pasa por ella
 ([08](08-contrato-voz-en-vivo.md) §1). Todas las rutas, salvo `POST /sessions` y
 `GET /health`, exigen la cabecera `X-Session-Token`. CORS: solo el origen del frontend
 (`ALLOWED_ORIGINS`). Cuerpos ≤ 4,5 MB (límite de Vercel).
@@ -15,7 +15,7 @@ Lo anterior describe la API de la base genérica (chat con cédula). La app de R
 | Método y ruta | Entrada | Salida | Detalle |
 |---|---|---|---|
 | `GET /health` | — | `status` (`ok`/`degraded`), `contract`, `engines` configurados, `voice_modes` (`["engine"]` o `["engine","cloned"]`), `default_voice_mode` (`cloned` si hay síntesis, D-22), `cloned_voice_engines` (`["openai"]`), estado de la fuente (`ok`, `ms`), perfiles de LLM | No llama a proveedores de pago |
-| `POST /sessions` | `locale` | 201 con `token` firmado y `expires_at` (2 h) | Anónima; sin cédula ni datos personales |
+| `POST /sessions` | `locale` | 201 con `token` firmado y `expires_at` (2 h) | Anónima; sin documento de identidad ni datos personales |
 | `POST /realtime/session` | `engine`, `conversation_id`, `seed?`, `style?`, `locale`, `voice?`, `voice_mode?` (`engine` por omisión) | `contract`, `engine`, `model`, `connect{url, protocols?, token, expires_at}`, `config{audio, voice, voice_mode, turn_detection}`, `instructions_version`, `brief?` | [08](08-contrato-voz-en-vivo.md) §3; `config.voice_mode` es el **efectivo** (`cloned` con Gemini vuelve `engine`) |
 | `POST /speech/session` | `conversation_id` | `contract`, `synth`, `model`, `connect{url, token, expires_at}`, `config{audio{encoding, sample_rate}, voice_id, language, timestamps}`, `voice_label` | Solo voz clonada ([08](08-contrato-voz-en-vivo.md) §15.3); token de 600 s con alcance `tts`; 503 `SYNTH_UNAVAILABLE` sin clave o con el proveedor caído |
 | `GET /dataset/brief` | — | Brief en vivo con preguntas sugeridas y `trace` | [09](09-datos-en-vivo-datos-gov-co.md) §8 |

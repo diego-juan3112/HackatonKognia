@@ -82,7 +82,7 @@ Cada worktree necesita su propio `.env`: `Copy-Item .env.example C:\dev\kognia\A
 **Prompt de arranque — Persona A**
 
 ```
-Eres el carril A (Front + Voz) del Reto 01. Antes de actuar lee AGENTS.md y docs/07, 08 y 12; docs/sdd_ips es insumo, mandan docs/07-13.
+Eres el carril A (Front + Voz) del Reto 01. Antes de actuar lee AGENTS.md y docs/07, 08 y 12; mandan docs/00-13.
 Eres dueño de web/**, docs/08 y la parte web de docs/11. No edites src/**, tests/**, config/** ni docs/09-10 (carril B): si necesitas algo ahí, descríbelo y pídemelo.
 Si hay que cambiar un contrato (eventos de VoiceEngine, forma de /tools o /realtime/session), primero cambia el doc y avísame: se acuerda con B antes de codificar (R-30).
 Trabaja contra web/mocks/ hasta que B publique el backend. Plan Mode en lo no trivial, commits convencionales pequeños, push tras cada commit. Nunca push a main sin que yo lo diga.
@@ -92,7 +92,7 @@ Primera tarea: andamiaje de web/ (Astro + TypeScript, sin framework) y un motor 
 **Prompt de arranque — Persona B**
 
 ```
-Eres el carril B (API + Datos + Análisis e integración) del Reto 01. Antes de actuar lee AGENTS.md y docs/07, 09, 10 y 12; docs/sdd_ips es insumo, mandan docs/07-13.
+Eres el carril B (API + Datos + Análisis e integración) del Reto 01. Antes de actuar lee AGENTS.md y docs/07, 09, 10 y 12; mandan docs/00-13.
 Eres dueño de src/**, tests/**, config/**, data/**, scripts/**, docs/09 y docs/10, y escribes AGENTS.md y docs/00, 02 y 03. No edites web/** ni docs/08 (carril A).
 Si hay que cambiar un contrato (/tools, /realtime/session, /analysis/utterance, sobre de evidencia), primero cambia el doc y el esquema en src/models/ y avísame (R-30).
 Reglas duras: R-05 (entorno solo en src/config.py), R-22 (toda cifra sale de una consulta en vivo), R-23 (el modelo nunca escribe SoQL), pruebas offline con dobles. Plan Mode en lo no trivial, commits pequeños, push tras cada commit. Nunca push a main sin que yo lo diga.
@@ -193,8 +193,8 @@ contrato o de empujar a `main` en una puerta, avisar. Las decisiones nuevas se a
 
 ## 13. Arranque de cada persona (primeros 40 minutos)
 
-**Estado al 2026-10-09 ≈ 10:45.** `main` ya trae `docs/00–06`; los docs `07–13` y `sdd_ips` llegan
-con el PR de `docs/reto-01-sdd`. Antes de crear los worktrees comprueba que ya está fusionado: en
+**Estado al 2026-10-09 ≈ 10:45.** `main` ya trae `docs/00–06`; los docs `07–13` (y el paquete sdd_ips,
+retirado después con D-23) llegan con el PR de `docs/reto-01-sdd`. Antes de crear los worktrees comprueba que ya está fusionado: en
 PowerShell, dentro de tu clon, `git fetch origin; git ls-tree --name-only origin/main docs/12-guia-de-trabajo-2-personas.md`
 debe imprimir el archivo. El repo es **público**: nada de claves en ningún commit (R-05).
 

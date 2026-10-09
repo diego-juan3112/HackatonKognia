@@ -3,7 +3,7 @@
 Contrato vigente · versión `2026-10-09.3` (aditiva sobre la `.2`: cuatro herramientas nuevas y filtro de capacidad en `search_ips`) · dueño: **carril B** ([12](12-guia-de-trabajo-2-personas.md)).
 Decisiones: D-09, D-12 (API en vivo), D-13 (herramientas tipadas y sobre de evidencia).
 Reglas: R-22 (evidencia primero), R-23 (herramientas cerradas), R-25 (recuperación acotada).
-Base de partida: sdd_ips/02 y sdd_ips/04, adaptados (ver [07](07-reto-01-especificacion.md) §3).
+Base de partida: los capítulos 02 y 04 del paquete sdd_ips, adaptados (ver [07](07-reto-01-especificacion.md) §3; el paquete se retiró del repo con D-23 y queda en el historial).
 
 **El contexto del agente es esta API y nada más.** No hay base de datos, RAG, embeddings ni
 espejo: cada cifra sale de una consulta en vivo registrada (R-22). El jurado verifica la
@@ -298,10 +298,11 @@ Plazo de primer plano común: 6 s ([10](10-modelos-afecto-y-recuperacion.md) §5
 
 ## 12. Pruebas
 
-Sin red en la suite por defecto (R-16): **fixtures** a partir de
-`sdd_ips/evidence/socrata_probe.json` (incluye filas
-repetidas de un mismo prestador) más fixtures sintéticos para Mixta, nivel vacío, cantidad nula,
-varias sedes y cambio de corte. Se prueban: constructores de consulta y escape, normalización y
+Sin red en la suite por defecto (R-16): filas registradas por prueba en `FakeDataset`
+(`tests/doubles/fake_dataset.py`), tomadas de la sonda real del 2026-10-09 (incluye filas
+repetidas de un mismo prestador; el archivo original de la sonda se retiró con D-23 y queda en el
+historial) más casos sintéticos para Mixta, nivel vacío, cantidad nula, varias sedes y cambio de
+corte. Se prueban: constructores de consulta y escape, normalización y
 ambigüedad, sobre de evidencia, mapeo de estados y el grupo sin clave. Las sondas en vivo viven
 en `tests/live/` con la marca `live` y **no** corren por defecto. Mapa a escenarios: A-03…A-09,
 A-12, A-18, A-19, A-24, A-26 ([07](07-reto-01-especificacion.md) §7).

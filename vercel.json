@@ -9,7 +9,7 @@
       "functions": {
         "src/api/app_voice.py": {
           "maxDuration": 60,
-          "excludeFiles": "{tests/**,docs/**,web/**,migrations/**,infra/**,scripts/**,spikes/**,.venv*/**,.claude/**,**/__pycache__/**,.env,.env.*}"
+          "excludeFiles": "{tests/**,docs/**,web/**,scripts/**,spikes/**,.venv*/**,.claude/**,**/__pycache__/**,.env,.env.*}"
         }
       }
     },
