@@ -19,6 +19,15 @@ Lo de abajo es específico de Claude Code, no reemplaza nada de AGENTS.md.
   del patrón puerto/adaptador para voz en tiempo real; el contrato vigente es
   `VoicePort` en `src/models/ports.py`.
 
+## Reto 01 (2026-10-09)
+- Entrega 2026-10-09 16:00. Lee [docs/07](docs/07-reto-01-especificacion.md) y, si trabajas
+  de a dos, [docs/12](docs/12-guia-de-trabajo-2-personas.md): cada sesión de Claude tiene su
+  worktree y su carril (A front y voz, B API, datos y análisis); no edites el carril del otro.
+- Las sesiones **no comparten memoria**: las sincronizan los contratos versionados
+  (`docs/08`, `docs/09`, `src/models/`, `web/src/voice/types.ts`).
+- `docs/sdd_ips/` es insumo; mandan `docs/07–13`.
+- La skill `azure-voice-live` y el `VoicePort` de STT/TTS en cascada quedan para la fase 2.
+
 ## Notas de sesión
 - Verificar que Docker esté corriendo antes de tareas que usen Terraform MCP.
 - Si `security-guidance` bloquea una escritura, revisar el motivo antes de

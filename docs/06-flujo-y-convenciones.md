@@ -22,6 +22,21 @@
 - **R-20.** Todo cambio a nivel de feature queda registrado en `CHANGELOG.md`
   con fecha, versión y funcionalidad.
 
+## Reto 01: SDD, ramas y worktrees
+
+- **Contrato primero (R-30).** Un cambio de eventos, esquemas, puertos o API se escribe antes
+  en `docs/` y en `src/models/` (o `web/src/voice/types.ts`); el PR enlaza la sección. Es la
+  única puerta formal; el resto va ligero.
+- **`main` es la rama de integración y de producción** (D-19). Cada persona trabaja en una
+  rama de carril (`feat/reto-01-front`, `feat/reto-01-api`) dentro de su worktree y empuja a
+  `main` en las puertas, con pruebas en verde y sin `--force`. Desde las 14:30, solo
+  correcciones P0 acordadas.
+- **Dos personas, dos sesiones de Claude, dos carriles** con propiedad de archivos distinta;
+  las sesiones no comparten memoria. Detalle, comandos y prompts de arranque:
+  [12](12-guia-de-trabajo-2-personas.md).
+- Al fusionar en una puerta, quien fusiona escribe la entrada de `CHANGELOG.md` (R-20),
+  distinguiendo lo planeado de lo implementado y de lo verificado.
+
 ## Commits (Conventional Commits)
 
 Un commit, un cambio lógico.
@@ -46,6 +61,9 @@ Pipeline en GitHub Actions, en cada PR contra `main`:
 
 **R-21.** `terraform apply` es siempre manual, ejecutado por una persona,
 nunca por el pipeline.
+
+Para Reto 01 basta, en cada *push* a `main` o rama de carril, `pytest` (offline) y
+`npm run build` en `web/`; Vercel genera el *preview* de cada rama.
 
 ## Herramientas y MCP registrados
 

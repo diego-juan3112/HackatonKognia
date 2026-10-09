@@ -1,103 +1,54 @@
-# Kognia Voice Agent — base genérica adaptable
+# Kognia Voice Agent — Reto 01: agente vocal sobre IPS de datos.gov.co
 
-Agente conversacional sobre **LangGraph**, expuesto por **FastAPI**, que responde
-con **Gemini** usando documentos embebidos con **E5** en **PostgreSQL + pgvector**,
-y que sabe con quién está hablando.
+Agente de voz en tiempo real, en español colombiano, que **consulta en vivo** la «Relación de
+IPS públicas y privadas según el nivel de atención y capacidad instalada» (datos.gov.co, REPS,
+corte 2022-11-05), muestra la **transcripción con roles y marcas de tiempo**, el **sentimiento y
+las emociones** (texto y voz) y **adapta su tono**. Reto 01 de la Hackatón interna de Kognia Labs;
+entrega el 2026-10-09 a las 16:00.
 
-**No sabemos el reto todavía.** Puede ser PQR o atención financiera, por voz o
-por video. Por eso el núcleo modela capacidades genéricas y nada de un dominio
-concreto. Ver [docs/00-contexto-y-decisiones.md](docs/00-contexto-y-decisiones.md) y [docs/01-arquitectura.md](docs/01-arquitectura.md).
+| | |
+|---|---|
+| **Demo pública** | *Se completa al cierre con la URL de producción ([docs/12](docs/12-guia-de-trabajo-2-personas.md) §9)* |
+| **Estado** | Contratos escritos ([docs/07](docs/07-reto-01-especificacion.md) a [13](docs/13-diferenciadores-y-backlog.md)); la implementación está en curso. **Este README solo declara como hecho lo que ya corre.** |
 
-> Para entender el proyecto a fondo — qué hace cada archivo, el flujo completo,
-> las advertencias — lee **[docs/01-arquitectura.md](docs/01-arquitectura.md)**.
+## Qué hace
 
-## Arranque
+- Conversación por voz con interrupciones: saluda, dice que es una IA y presenta lo que puede consultar.
+- Las cifras salen **siempre de una consulta en vivo** a la API (panel «API en vivo»: SoQL, ms, filas, fuente y corte); si no hay dato, lo dice.
+- Transcripción en vivo (usuario y agente, con marcas de tiempo) y panel de emociones con estilo adaptativo.
+- Recuperación: correcciones («no, dije Melgar»), reintentos acotados y cambio de motor de voz.
 
-```bash
-python -m venv .venv
-.venv/Scripts/activate            # Windows;  source .venv/bin/activate en Linux/Mac
-pip install -r requirements.txt
+## Arquitectura
 
-cp .env.example .env              # y pon tu GEMINI_API_KEY
+Navegador (**Astro + TypeScript**) ⇄ motor de voz en tiempo real (**OpenAI Realtime** o **Gemini
+Live**, con credencial efímera). Backend **FastAPI en Vercel, solo HTTP**: credenciales, 5
+herramientas cerradas que consultan **SODA3** y un analista de afecto en **LangGraph**. Sin base
+de datos, RAG ni cédula. Diagrama: [docs/01 §11](docs/01-arquitectura.md).
 
-docker compose up -d              # PostgreSQL 17 + pgvector en :5433
-python -m scripts.migrate         # crea las tablas en la base de desarrollo
-python -m scripts.seed            # 2 usuarios demo + documentos embebidos con E5
+## Decisiones técnicas
 
-python -m scripts.serve           # NO uses uvicorn directamente, ver abajo
-```
+- El contexto es la API en vivo (D-12); el modelo envía JSON y **nunca SoQL** (D-13).
+- Voz en tiempo real desde el navegador (D-11), con una excepción acotada a R-04 (D-14).
+- Afecto por texto y voz con política de estilo determinista, con aviso y consentimiento (D-16).
+- `main` es la rama de integración y de producción (D-19). Lista completa: [docs/00 §5](docs/00-contexto-y-decisiones.md).
 
-La primera vez, `scripts.seed` descarga el modelo E5 (~1.1 GB). Después carga
-desde la caché sin tocar la red.
+## Qué generó la IA (RETO-M04)
 
-> **Windows: arranca el servidor con `python -m scripts.serve`.**
-> psycopg no funciona sobre el event loop por defecto de Windows, y uvicorn
-> construye el suyo ignorando la política de asyncio. `scripts/serve.py` le pasa
-> la factory correcta. Detalle en [docs/01-arquitectura.md](docs/01-arquitectura.md) §4.4.
+Este proyecto se construye con asistencia de IA: **Claude Code (Anthropic)** para la planeación
+SDD, la documentación y *[código: completar al cierre]*; **GPT (OpenAI)** para el paquete de
+planeación `docs/sdd_ips`. Las personas del equipo revisan y prueban todo lo generado antes de
+fusionarlo. Al cierre se listan aquí los módulos generados por IA.
 
-## Probarlo
+## Cómo correrlo
 
-Documentación interactiva en **http://localhost:8000/docs**. Qué significa cada
-campo y qué hacer con cada error está en [docs/03-api.md](docs/03-api.md). O con curl:
+Las instrucciones de arranque se completan cuando exista el código
+([docs/12](docs/12-guia-de-trabajo-2-personas.md) §3–§6 y [docs/11](docs/11-despliegue.md)).
+Variables: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `DATOS_GOV_APP_TOKEN`, `SESSION_SIGNING_KEY` (nunca en git).
 
-```bash
-# 1. Crear un usuario
-curl -X POST http://localhost:8000/users -H "Content-Type: application/json" \
-  -d '{"cedula": "3333333333", "display_name": "Carla"}'
+## Límites honestos
 
-# 2. Iniciar sesión (solo funciona para usuarios registrados; el seed trae
-#    a Ana Demo 1000000001 y Beto Demo 1000000002)
-curl -X POST http://localhost:8000/auth/login -H "Content-Type: application/json" \
-  -d '{"cedula": "3333333333"}'
+Capacidad **instalada** (REPS, 2022), no disponibilidad; nivel de atención vacío en el 89% de las
+IPS; `departamento` incluye distritos; la separación de hablantes es por rol; el análisis de voz
+es una estimación, no un diagnóstico.
 
-# 3. Conversar con el session_id del paso 2
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
-  -H "X-Session-Id: <session_id>" \
-  -d '{"message": "a que hora puedo ir el fin de semana?"}'
-
-# 4. Historial
-curl http://localhost:8000/conversations -H "X-Session-Id: <session_id>"
-```
-
-## Pruebas
-
-```bash
-pytest                   # con dobles en memoria: sin red, sin Docker, sin key
-pytest -m integration    # contra PostgreSQL real, en la base kognia_test
-```
-
-Los tests de integración **nunca tocan la base de desarrollo**: corren en
-`kognia_test`, que se crea sola, y se niegan a ejecutarse contra cualquier base
-cuyo nombre no termine en `_test`. Tus datos del seed quedan intactos.
-
-## Arquitectura en una pantalla
-
-```
-api/  ->  services/  ->  integrations/        models/ es transversal
-```
-
-```
-intake → classify_intent → collect_data → route ─┬→ retrieve_context → respond
-                                                 └→ respond
-```
-
-La regla que sostiene el diseño (R-04): **el LLM nunca decide una
-transición.** Clasifica y redacta; la arista condicional es una función pura que
-lee `state["route"]`.
-
-## Advertencias
-
-- **La identificación por cédula no es autenticación.** No hay contraseña:
-  cualquiera que conozca una cédula registrada obtiene una sesión.
-- **Al LLM solo le llegan el nombre y los últimos 4 dígitos de la cédula**, nunca
-  la cédula completa. Hay un test que lo garantiza.
-- **Cuota gratuita de Gemini**: si se agota, la API responde 503 con un mensaje
-  claro. Un turno con RAG cuesta dos llamadas al modelo.
-- **La dimensión del embedding está clavada** en `vector(768)`. Cambiar de
-  modelo exige una migración nueva y reindexar.
-
-## Despliegue
-
-Pendiente: el Terraform de `infra/terraform/` todavía no incluye PostgreSQL ni
-el modelo E5. Es la siguiente fase. `terraform apply` es siempre manual
-([docs/06-flujo-y-convenciones.md](docs/06-flujo-y-convenciones.md), R-21).
+Datos: Ministerio de Salud y Protección Social — REPS, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).

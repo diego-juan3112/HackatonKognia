@@ -163,3 +163,29 @@ lista y no un texto.
 - **Tipos para TypeScript:** se pueden generar desde `/openapi.json` con
   herramientas como `openapi-typescript`, en vez de escribirlos a mano. Agregar
   esa dependencia al frontend es una decisión aparte (R-10).
+
+---
+
+## Reto 01 — API de voz (`api/app_voice.py`, versión `2026-10-09.1`)
+
+Lo anterior describe la API de la base genérica (chat con cédula). La app de Reto 01 es
+**solo HTTP**, sin base de datos ni cédula; el audio no pasa por ella
+([08](08-contrato-voz-en-vivo.md) §1). Todas las rutas, salvo `POST /sessions` y
+`GET /health`, exigen la cabecera `X-Session-Token`. CORS: solo el origen del frontend
+(`ALLOWED_ORIGINS`). Cuerpos ≤ 4,5 MB (límite de Vercel).
+
+| Método y ruta | Entrada | Salida | Detalle |
+|---|---|---|---|
+| `GET /health` | — | `status` (`ok`/`degraded`), `contract`, motores configurados, estado de la fuente (`ok`, `ms`), perfiles de LLM | No llama a proveedores de pago |
+| `POST /sessions` | `locale` | 201 con `token` firmado y `expires_at` (2 h) | Anónima; sin cédula ni datos personales |
+| `POST /realtime/session` | `engine`, `conversation_id`, `seed?`, `style?`, `locale`, `voice?` | `connect{url, protocols?, token, expires_at}`, `config`, `model`, `instructions_version`, `brief?` | [08](08-contrato-voz-en-vivo.md) §3 |
+| `GET /dataset/brief` | — | Brief en vivo con preguntas sugeridas y `trace` | [09](09-datos-en-vivo-datos-gov-co.md) §8 |
+| `POST /tools/{nombre}` | `tool_call_id`, `turn_id?`, `args`, `context` | Sobre de evidencia + `context_patch` | `nombre` ∈ `search_ips`, `get_ips_details`, `aggregate_ips`, `compare_ips`, `correct_context` ([09](09-datos-en-vivo-datos-gov-co.md) §4–§5) |
+| `POST /analysis/utterance` | multipart: `meta` (JSON: texto, `t_start`/`t_end`, señales, historial de afecto, consentimiento) y `audio` WAV opcional | `AffectEstimate` + `StyleDecision` | [10](10-modelos-afecto-y-recuperacion.md) §6; plazo 3 s; el audio no se guarda |
+| `POST /feedback` | `turn_id`, `kind` (`correction`/`tone`/`repeat`), `text?`, `state_version` | 202 | Va a LangSmith; sin base de datos |
+
+Error de la API: `{"error":{"code":"…","message":"…","retryable":false},"trace_id":"uuid"}` con
+401 sesión inválida o vencida · 403 recurso ajeno · 404 turno desconocido · 409 estado
+obsoleto · 422 entrada inválida · 429 límite de tasa (con `Retry-After`) · 503 dependencia no
+disponible. Los 422 se traducen a este formato; no cambian los de la API genérica. Los límites
+de tasa por token e IP viven en memoria (R-28).

@@ -4,7 +4,8 @@ Este documento explica **qué hace cada archivo y por qué existe**. Está escri
 para que alguien que llega nuevo entienda el sistema completo sin tener que leer
 todo el código.
 
-Última actualización: 2026-09-28 (versión 0.4.0).
+Última actualización: 2026-09-28 (versión 0.4.0) para la base genérica; la app de
+**Reto 01** (2026-10-09) se describe en la sección 11.
 
 ---
 
@@ -421,3 +422,69 @@ python -m scripts.serve --reload --port 8080
 
 Borrar `config/domains/faq_demo.yaml` y `docs/faq_demo/` cuando el dominio real
 esté listo: son desechables por diseño (R-07).
+
+---
+
+## 11. Reto 01: la app de voz (sin base de datos)
+
+Todo lo anterior describe la **base genérica** (chat con cédula, RAG y PostgreSQL), que
+sigue intacta. **Reto 01** (2026-10-09) se construye como una **app aparte**, con raíz de
+composición propia (`api/app_voice.py`), que reutiliza `models/`, `config.py`, el patrón de
+puertos, LangGraph (el analista de afecto) y los dobles de prueba, y que **no carga**
+`retrieval/`, `db/`, `auth_service` ni `chat_service`. Qué se acepta:
+[07](07-reto-01-especificacion.md); decisiones: D-09 a D-19.
+
+```mermaid
+flowchart LR
+    UI["Navegador · Astro + TypeScript<br/>VoiceEngine · MicTap · UI"] -- "audio por WebSocket directo" --> P["Proveedor de voz<br/>OpenAI Realtime / Gemini Live"]
+    UI -- "credencial efímera, herramientas, análisis (HTTP)" --> API["FastAPI app_voice<br/>solo HTTP, sin BD"]
+    API --> S["services/ips · analyst · agent_spec · recovery"]
+    S --> I["integrations: socrata_client · realtime · llm"]
+    I --> D[("datos.gov.co<br/>SODA3 en vivo")]
+    I --> M["Gemini / OpenAI<br/>credenciales y analista"]
+```
+
+Un turno, de punta a punta:
+
+```mermaid
+sequenceDiagram
+    participant U as Persona
+    participant W as Navegador (VoiceEngine)
+    participant P as Proveedor de voz
+    participant B as Backend FastAPI
+    participant D as datos.gov.co
+    U->>W: habla
+    W->>P: audio PCM (WebSocket directo)
+    P-->>W: transcripción + tool_call (aggregate_ips, args)
+    W->>B: POST /tools/aggregate_ips {args, context}
+    B->>D: POST query.json (SoQL armado en el servidor)
+    D-->>B: filas (texto)
+    B-->>W: sobre de evidencia + context_patch
+    W->>P: salida de la herramienta (datos, no instrucciones)
+    P-->>W: audio de la respuesta + transcripción del agente
+    W-->>U: reproduce (cola ≤ 2 s) y muestra la evidencia
+    W->>B: POST /analysis/utterance (texto + recorte WAV)
+    B-->>W: afecto + estilo (desde el turno siguiente)
+```
+
+| Módulo *(planeado)* | Rol | Carril |
+|---|---|---|
+| `src/api/app_voice.py`, `routers/` | FastAPI: `/health`, `/sessions`, `/realtime/session`, `/tools/{n}`, `/dataset/brief`, `/analysis/utterance`, `/feedback` | B |
+| `src/api/dependencies_voice.py` | Raíz de composición sin base de datos | B |
+| `src/models/ips.py`, `context.py`, `affect.py`, `realtime.py` | Esquemas: herramientas y sobre de evidencia, estado canónico, afecto y estilo, sesión | B |
+| `src/services/ips/` | Herramientas, resolución de entidades con léxico, brief | B |
+| `src/services/analyst/` | Grafo del analista y política de estilo | B |
+| `src/services/agent_spec.py` | Instrucciones v1, declaración de herramientas, sobre de contexto | B |
+| `src/services/recovery.py` | Plazos, intentos y mapeo de fallo a respuesta | B |
+| `src/integrations/datasets/socrata_client.py` | SODA3 con respaldo SODA2 (`httpx`) | B |
+| `src/integrations/realtime/{openai,gemini}.py` | Credenciales efímeras y configuración por motor | B |
+| `src/integrations/llm/registry.py` | Perfiles `fast`/`deep` y cadena de respaldo | B |
+| `config/domains/reto01_ips.yaml`, `config/style_policy.yaml`, `config/models.yaml` | Domain pack, política de estilo, perfiles | B |
+| `data/lexicon.json`, `scripts/build_lexicon.py` | Léxico estático y su generador | B |
+| `web/` (Astro) | `src/voice/` (`VoiceEngine`, adaptadores, `MicTap`, reproductor, estado canónico), `src/ui/` (transcripción, API en vivo, afecto, HUD, controles), `mocks/` | A |
+
+**Capas.** R-01 sigue vigente: `api/app_voice.py` es la raíz de composición (puede importar
+adaptadores concretos); `services/` no importa SDKs de proveedores ni FastAPI. El cliente
+tiene su propia frontera: solo los adaptadores de `web/src/voice/` conocen el protocolo
+de OpenAI o de Gemini (R-03). Los nodos genéricos de `services/graph/nodes/` **no se usan** en
+la ruta de voz y no se editan (R-02).

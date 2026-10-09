@@ -5,6 +5,25 @@ Este proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+- **Contratos de Reto 01 (2026-10-09), solo documentación: sin código ni despliegue.**
+  Especificación (`docs/07`), contrato de voz en vivo (`08`), datos en vivo de
+  datos.gov.co (`09`), modelos, afecto y recuperación (`10`), despliegue (`11`), guía de
+  trabajo para dos personas (`12`) y diferenciadores y backlog (`13`). `docs/00` registra
+  D-09…D-19 y `AGENTS.md` las reglas R-22…R-31.
+- `docs/sdd_ips/` (paquete de planeación generado por GPT) entra como **insumo**, con la
+  reconciliación en `docs/07` §3; `docs/anexos/` conserva la evidencia de los spikes de voz
+  y avatar.
+- Mediciones del 2026-10-09 contra la API real: SODA3 anónimo 200 en 0,57 s; 41.427 filas,
+  9.320 IPS, 10.921 códigos de sede; nivel de atención vacío en el 89% de las IPS.
+
+### Changed
+- **R-04 (alcance, excepción acotada D-14), R-06, R-07, R-08 (retirada) y R-10
+  reformuladas; D-03 reemplazada por D-10.** D-02, D-05 y D-06 siguen vigentes para la base
+  genérica pero **no aplican a Reto 01**, que no usa base de datos, RAG, embeddings ni cédula.
+- `docs/01` (§11), `03`, `05` y `06` añaden la app de voz, su API, sus pruebas y el flujo de
+  dos personas con `main` como rama de integración y de producción (D-19).
+
 ## [0.4.2] - 2026-10-07
 
 ### Changed
