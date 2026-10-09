@@ -56,9 +56,18 @@ async def test_for_model_is_compact_at_most_three_rows():
             [("A", 50), ("B", 40), ("C", 30), ("D", 20), ("E", 10)]]
     env = await _svc(FakeDataset().on("GROUP BY municipio", rows)).run("aggregate_ips", _req(
         {"metric": "capacity_sum", "group_by": "municipality", "top_n": 5, "filters": {"capacity_group": "CAMAS"}}))
-    assert "A · D: 50" in env.for_model and "C · D: 30" in env.for_model and "D · D: 20" not in env.for_model
+    assert "A (D): 50" in env.for_model and "C (D): 30" in env.for_model and "D: 20" not in env.for_model
     assert "(+2 en pantalla)" in env.for_model and "SELECT" not in env.for_model and len(env.for_model) < 600
     assert len(env.data["groups"]) == 5  # the browser still gets everything
+
+
+async def test_for_model_district_is_not_repeated():
+    rows = [{"municipio": "CALI", "departamento": "Cali", "value": "5876"},
+            {"municipio": "BOGOTÁ", "departamento": "Bogotá D.C", "value": "16193"}]
+    env = await _svc(FakeDataset().on("GROUP BY municipio", rows)).run("aggregate_ips", _req(
+        {"metric": "capacity_sum", "group_by": "municipality", "top_n": 2, "filters": {"capacity_group": "CAMAS"}}))
+    assert "Cali: 5.876" in env.for_model and "Bogotá: 16.193" in env.for_model  # 'bogota' vs 'bogota dc'
+    assert env.data["groups"][0]["key"] == "CALI · Cali"  # the browser contract is unchanged
 
 
 async def test_prefetch_uses_the_exact_tool_queries():

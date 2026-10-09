@@ -445,7 +445,9 @@ class IpsToolService:
 
     async def _correct_context(self, req: ToolRequest, a: CorrectContextArgs, deadline: Deadline) -> ToolEnvelope:
         current = req.context.state_version
-        if a.expected_state_version != current:
+        expected = current if a.expected_state_version is None else a.expected_state_version
+        target_turn = a.target_turn_id or req.context.turn_id or req.turn_id
+        if expected != current:
             raise _Reject("invalid", error=ToolError(
                 code="STATE_CONFLICT", message="El estado cambió; refresca el contexto.",
                 hint=f"state_version vigente: {current}", retryable=True))
@@ -487,7 +489,7 @@ class IpsToolService:
             "selected_site_keys": [] if a.field != "site_key" else [a.value],
             "last_result_site_keys": [],
             "invalidate_evidence": True,
-            "corrects_turn_id": a.target_turn_id,
+            "corrects_turn_id": target_turn,
         }
         resolved = ", ".join(str(v) for v in confirmed.values() if v)
         return self._envelope(req, "ok", data={"field": a.field, "value": a.value, "resolved": resolved,

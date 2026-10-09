@@ -157,6 +157,12 @@ async def test_correct_context_bumps_version_and_invalidates():  # A-09
     assert env.data["resolved"] == "Tolima, MELGAR"
 
 
+async def test_correct_context_needs_only_field_and_value():  # eval 2026-10-09, C01
+    env = await _svc(FakeDataset()).run("correct_context", _req(
+        {"field": "municipality", "value": "Melgar"}, state_version=2))
+    assert env.status == "ok" and env.state_version == 3 and env.context_patch["corrects_turn_id"] == "t1"
+
+
 async def test_correct_context_rejects_stale_state():
     env = await _svc(FakeDataset()).run("correct_context", _req(
         {"target_turn_id": "t1", "expected_state_version": 1, "field": "nature", "value": "publica"}, state_version=2))

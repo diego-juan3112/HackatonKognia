@@ -161,11 +161,12 @@ class SocrataClient:
                     await asyncio.sleep(retry_after)
                     continue
                 raise DatasetUnavailable("RATE_LIMITED", "datos.gov.co rate limit", retry_after)
-            if r.status_code >= 500:
-                last_error = f"HTTP {r.status_code}"
-                continue
-            # 4xx other than the above: the query itself is wrong -- a bug, not a blip.
-            raise DatasetUnavailable("SOURCE_REJECTED", f"HTTP {r.status_code}: {r.text[:200]}")
+            # Eval 2026-10-09: datos.gov.co returned intermittent 4xx for valid queries that
+            # succeeded on the next attempt, so any other status gets the one retry too.
+            log.warning("datos.gov.co HTTP %s: %s", r.status_code, r.text[:200])
+            last_error = f"HTTP {r.status_code}"
+            if r.status_code < 500 and attempts >= 2:
+                raise DatasetUnavailable("SOURCE_REJECTED", last_error)
         raise DatasetUnavailable("TIMEOUT" if "Timeout" in last_error else "SOURCE_UNAVAILABLE", last_error)
 
 

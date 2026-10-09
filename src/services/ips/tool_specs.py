@@ -58,11 +58,12 @@ TOOL_SPECS: list[ToolSpec] = [
     ),
     ToolSpec(
         name="correct_context",
-        description="Aplica una corrección explícita de la persona; luego vuelve a consultar.",
+        description="Aplica una corrección explícita de la persona («no, dije Melgar»); luego vuelve a consultar. "
+                    "Basta field y value; los identificadores son internos: nunca se los pidas a la persona.",
         parameters={"type": "object", "properties": {
             "target_turn_id": _S, "expected_state_version": {"type": "integer"},
             "field": {"type": "string", "enum": ["department", "municipality", "name", "nature", "level", "site_key"]},
             "value": _S,
-        }, "required": ["target_turn_id", "expected_state_version", "field", "value"]},
+        }, "required": ["field", "value"]},
     ),
 ]

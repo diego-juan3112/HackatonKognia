@@ -69,6 +69,17 @@ async def test_stale_cache_only_when_the_source_fails():
     assert res.cache_status == "stale" and res.rows == [{"value": "9"}]
 
 
+async def test_intermittent_4xx_is_retried_once():  # eval 2026-10-09: SOURCE_REJECTED that recovered
+    n = {"calls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        n["calls"] += 1
+        return httpx.Response(400) if n["calls"] == 1 else httpx.Response(200, json=[{"value": "7"}])
+
+    res = await _client(handler).query("SELECT 1", deadline=Deadline(5))
+    assert res.rows == [{"value": "7"}] and n["calls"] == 2
+
+
 async def test_429_without_room_in_deadline_is_rate_limited():
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(429, headers={"Retry-After": "30"})
